@@ -4,16 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"regexp"
-)
 
-var authHeaderRegex = regexp.MustCompile(`(realm|service|scope)="([^"]*)`)
+	"github.com/rs/zerolog"
+)
 
 const (
 	// Registry REST routes
 	routeFrontendPing     = "/v2/"
 	routeDataEndpointPing = "/"
-	routeTokenServerPing  = "/oauth2/token"
 )
 
 // Options configures the proxy.
@@ -36,12 +34,13 @@ type Options struct {
 
 // Proxy acts as a proxy to a remote registry.
 type Proxy struct {
-	transport transport
+	http.RoundTripper
 	*Options
+	zerolog.Logger
 }
 
 // NewProxy creates a new registry proxy.
-func NewProxy(rt http.RoundTripper, opts *Options) (*Proxy, error) {
+func NewProxy(rt http.RoundTripper, opts *Options, logger zerolog.Logger) (*Proxy, error) {
 	if opts == nil {
 		return nil, errors.New("opts required")
 	}
@@ -53,29 +52,35 @@ func NewProxy(rt http.RoundTripper, opts *Options) (*Proxy, error) {
 	if rt == nil {
 		rt = http.DefaultTransport
 	}
-
 	return &Proxy{
-		transport: newTransport(rt, opts.Username, opts.Password),
-		Options:   opts,
+		RoundTripper: rt,
+		Options:      opts,
+		Logger:       logger,
 	}, nil
 }
 
-// Logs returns the logs of all operations done on the registry.
-func (p Proxy) Logs() (string, error) {
-	return p.transport.obs.Marshal()
-}
-
 // Ping pings various registry endpoints.
-func (p Proxy) Ping() error {
-	// Ping the frontend.
+func (p Proxy) Ping() (err error) {
 	url := fmt.Sprintf("%s://%s%s", p.scheme(), p.LoginServer, routeFrontendPing)
-	req, err := http.NewRequest(http.MethodHead, url, nil)
-	if err != nil {
+
+	if err = p.doNoAuth(url, http.StatusUnauthorized); err != nil {
 		return err
 	}
-	_, err = p.transport.RoundTrip(req)
 
-	return err
+	if err = p.doBasicAuth(url, http.StatusOK); err != nil {
+		return err
+	}
+
+	if err = p.doBearerAuth(url, http.StatusOK); err != nil {
+		return err
+	}
+
+	if p.DataEndpoint != "" {
+		url := fmt.Sprintf("%s://%s%s", p.scheme(), p.DataEndpoint, routeDataEndpointPing)
+		return p.doNoAuth(url, http.StatusForbidden)
+	}
+
+	return nil
 }
 
 func (p Proxy) scheme() string {
@@ -84,4 +89,30 @@ func (p Proxy) scheme() string {
 		scheme = "http"
 	}
 	return scheme
+}
+
+func (p Proxy) doNoAuth(url string, expected int) error {
+	return do(url, newNoAuthTransport(p.RoundTripper, p.Logger), expected)
+}
+
+func (p Proxy) doBasicAuth(url string, expected int) error {
+	return do(url, newBasicAuthTransport(p.RoundTripper, p.Username, p.Password, p.Logger), expected)
+}
+
+func (p Proxy) doBearerAuth(url string, expected int) error {
+	return do(url, newBearerAuthTransport(p.RoundTripper, p.Username, p.Password, p.Logger), expected)
+}
+
+func do(url string, t transport, expected int) error {
+	req, err := http.NewRequest(http.MethodHead, url, nil)
+	if err != nil {
+		return err
+	}
+
+	result, err := t.RoundTrip(req)
+	if result.Response.Code != expected {
+		return fmt.Errorf("invalid response code, expected: %v, got: %v", expected, result.Response.Code)
+	}
+
+	return nil
 }

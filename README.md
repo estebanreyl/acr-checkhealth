@@ -1,2 +1,2 @@
-# Azure Container Registry Runner
-This tool can be used to exercise various ACR APIs to evaluate the health of the service.
+# Azure Container Registry Complaince Tool
+This tool can be used to test various ACR APIs to evaluate conformance.

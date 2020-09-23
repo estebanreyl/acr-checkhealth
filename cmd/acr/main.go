@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"os"
 
 	"github.com/urfave/cli/v2"
@@ -10,7 +9,7 @@ import (
 func main() {
 	app := &cli.App{
 		Name:    "runner",
-		Usage:   "ACR Runner - evaluate if an Azure Container Registry is healthy",
+		Usage:   "ACR Conformance - evaluate if registry APIs conform to specs",
 		Version: "0.1.0",
 		Authors: []*cli.Author{
 			{
@@ -23,6 +22,8 @@ func main() {
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		log.Fatal(err)
+		logger.Fatal().Msg(err.Error())
+	} else {
+		logger.Info().Msg("success")
 	}
 }
