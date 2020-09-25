@@ -4,14 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
-	"time"
 
-	reghttp "github.com/aviral26/acr/conformance/pkg/http"
+	rhttp "github.com/aviral26/acr/checkhealth/pkg/http"
+	"github.com/aviral26/acr/checkhealth/pkg/io"
 	"github.com/rs/zerolog"
 )
 
@@ -26,10 +25,6 @@ const (
 )
 
 const (
-	headerChallenge     = "Www-Authenticate"
-	headerLocation      = "Location"
-	headerAuthorization = "Authorization"
-
 	schemeBearer = "bearer"
 
 	claimRealm   = "realm"
@@ -39,81 +34,117 @@ const (
 
 var authHeaderRegex = regexp.MustCompile(`(realm|service|scope)="([^"]*)`)
 
+// registryRequest describes content of a registry request.
+type registryRequest struct {
+	method      string
+	url         string
+	body        io.Reader
+	contentType string
+	accept      string
+}
+
 // transport can be used to make HTTP requests with authentication.
 // Basic and bearer auth are supported.
 type transport struct {
-	rt http.RoundTripper
+	tripper rhttp.RoundTripper
 	authType
 	username string
 	password string
 	logger   zerolog.Logger
 }
 
-// newNoAuthTransport returns a new transport that does not use auth.
-func newNoAuthTransport(rt http.RoundTripper, logger zerolog.Logger) transport {
-	return transport{
-		rt:       rt,
-		authType: noAuth,
-		logger:   logger,
+// newTransport returns a new transport.
+func newTransport(tripper rhttp.RoundTripper, username, password string, at authType, logger zerolog.Logger) (transport, error) {
+	t := transport{}
+
+	switch at {
+	case bearerAuth, basicAuth:
+		if username == "" {
+			return t, errors.New("username required")
+		}
+		if password == "" {
+			return t, errors.New("password required")
+		}
 	}
+
+	if tripper == nil {
+		return t, errors.New("round trippper required")
+	}
+
+	t.username = username
+	t.password = password
+	t.authType = at
+	t.logger = logger
+	t.tripper = tripper
+
+	return t, nil
+}
+
+// newNoAuthTransport returns a new transport that does not use auth.
+func newNoAuthTransport(tripper rhttp.RoundTripper, logger zerolog.Logger) (transport, error) {
+	return newTransport(tripper, "", "", noAuth, logger)
 }
 
 // newBasicAuthTransport returns a new transport that uses basic auth.
-func newBasicAuthTransport(rt http.RoundTripper, username, password string, logger zerolog.Logger) transport {
-	return transport{
-		rt:       rt,
-		authType: basicAuth,
-		username: username,
-		password: password,
-		logger:   logger,
-	}
+func newBasicAuthTransport(tripper rhttp.RoundTripper, username, password string, logger zerolog.Logger) (transport, error) {
+	return newTransport(tripper, username, password, basicAuth, logger)
 }
 
 // newBearerAuthTransport returns a new transport that uses bearer auth.
-func newBearerAuthTransport(rt http.RoundTripper, username, password string, logger zerolog.Logger) transport {
-	return transport{
-		rt:       rt,
-		authType: bearerAuth,
-		username: username,
-		password: password,
-		logger:   logger,
-	}
+func newBearerAuthTransport(tripper rhttp.RoundTripper, username, password string, logger zerolog.Logger) (transport, error) {
+	return newTransport(tripper, username, password, bearerAuth, logger)
 }
 
 // RoundTrip makes an HTTP request and returns the response body.
 // It supports basic and bearer authorization.
-func (t transport) RoundTrip(originalReq *http.Request) (rtInfo reghttp.RoundTripInfo, err error) {
-	req := originalReq.Clone(originalReq.Context())
+func (t transport) RoundTrip(regReq registryRequest) (tripInfo rhttp.RoundTripInfo, err error) {
+	req, err := http.NewRequest(regReq.method, regReq.url, regReq.body)
+	if err != nil {
+		return tripInfo, err
+	}
+	if regReq.contentType != "" {
+		req.Header.Set(rhttp.HeaderContentType, regReq.contentType)
+	}
+	if regReq.accept != "" {
+		req.Header.Set(rhttp.HeaderAccept, regReq.accept)
+	}
 
 	switch t.authType {
-	case noAuth, bearerAuth:
+	case bearerAuth:
+		tokenReq, err := http.NewRequest(regReq.method, regReq.url, nil)
+		if err != nil {
+			return tripInfo, err
+		}
+		tripInfo, err = t.tripper.RoundTrip(tokenReq)
+		if err != nil {
+			return tripInfo, err
+		}
+		if tripInfo.Response.Code != http.StatusUnauthorized {
+			return tripInfo, errors.New("failed to get challenge")
+		}
+
+		scheme, params := parseAuthHeader(tripInfo.Response.HeaderChallenge)
+		if scheme == schemeBearer {
+			token, err := t.getToken(params)
+			if err != nil {
+				return tripInfo, err
+			}
+
+			req.Header.Set(rhttp.HeaderAuthorization, "Bearer "+token)
+		}
 	case basicAuth:
 		if t.username == "" {
-			return rtInfo, errors.New("username not provided")
+			return tripInfo, errors.New("username not provided")
 		}
 		req.SetBasicAuth(t.username, t.password)
 	}
 
-	rtInfo = t.roundTrip(req)
-	if rtInfo.Error != nil {
-		return rtInfo, rtInfo.Error
+	tripInfo, err = t.tripper.RoundTrip(req)
+	if err != nil {
+		return tripInfo, err
 	}
 
-	if t.authType == bearerAuth && rtInfo.Response.Code == http.StatusUnauthorized {
-		scheme, params := parseAuthHeader(rtInfo.Response.HeaderChallenge)
-		if scheme == schemeBearer {
-			token, err := t.getToken(params)
-			if err != nil {
-				return rtInfo, err
-			}
-
-			req := originalReq.Clone(originalReq.Context())
-			req.Header.Set(headerAuthorization, "Bearer "+token)
-			rtInfo = t.roundTrip(req)
-		}
-	}
-
-	return rtInfo, nil
+	return tripInfo, nil
 }
 
 // getToken attempts to get an auth token based on the given params.
@@ -139,58 +170,21 @@ func (t transport) getToken(params map[string]string) (string, error) {
 	}
 	req.URL.RawQuery = query.Encode()
 
-	rtInfo := t.roundTrip(req)
-	if rtInfo.Error != nil {
-		return "", rtInfo.Error
+	tripInfo, err := t.tripper.RoundTrip(req)
+	if err != nil {
+		return "", err
 	}
-	if rtInfo.Response.Code != http.StatusOK {
-		return "", fmt.Errorf("get access token failed, expected: 200, got: %v", rtInfo.Response.Code)
+	if tripInfo.Response.Code != http.StatusOK {
+		return "", fmt.Errorf("get access token failed, expected: 200, got: %v", tripInfo.Response.Code)
 	}
 
 	var result struct {
 		AccessToken string `json:"access_token"`
 	}
-	if err := json.Unmarshal([]byte(rtInfo.Response.Body), &result); err != nil {
+	if err := json.Unmarshal(tripInfo.Response.Body, &result); err != nil {
 		return "", err
 	}
 	return result.AccessToken, nil
-}
-
-// roundTrip makes the given request and returns the server response, with some statistics.
-func (t transport) roundTrip(req *http.Request) reghttp.RoundTripInfo {
-	info := reghttp.RoundTripInfo{
-		Request: reghttp.Request{
-			URL:                 req.URL,
-			StartedAt:           time.Now(),
-			HeaderAuthorization: req.Header.Get(headerAuthorization),
-		},
-	}
-	defer func() {
-		info.Elapsed = time.Since(info.StartedAt)
-		t.logger.Info().Msgf("%+v", info)
-	}()
-
-	resp, err := t.rt.RoundTrip(req)
-	if err != nil {
-		info.Error = err
-		return info
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		info.Error = err
-		return info
-	}
-
-	info.Response = reghttp.Response{
-		Code:            resp.StatusCode,
-		Body:            string(bodyBytes),
-		HeaderChallenge: resp.Header.Get(headerChallenge),
-		HeaderLocation:  resp.Header.Get(headerLocation),
-	}
-
-	return info
 }
 
 // parseAuthHeader parses the Www-Authenticate header and retrieves auth metadata

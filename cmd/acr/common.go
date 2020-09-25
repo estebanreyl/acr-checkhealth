@@ -4,20 +4,25 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"strings"
 
+	"github.com/aviral26/acr/checkhealth/pkg/registry"
 	"github.com/rs/zerolog"
 	"github.com/urfave/cli/v2"
 )
 
+// Common flag names
 const (
 	insecureStr     = "insecure"
 	userNameStr     = "username"
 	passwordStr     = "password"
 	dataEndpointStr = "dataendpoint"
+	traceStr        = "trace"
 )
 
+// Common cli flags
 var (
 	insecureFlag = &cli.BoolFlag{
 		Name:  insecureStr,
@@ -41,12 +46,43 @@ var (
 		Aliases: []string{"d"},
 		Usage:   "endpoint for data download",
 	}
+
+	traceFlag = &cli.BoolFlag{
+		Name:  traceStr,
+		Usage: "print trace logs",
+	}
 )
 
 var (
 	logger = zerolog.New(os.Stdout).With().Timestamp().Logger()
 )
 
+// proxy creates an new proxy instance from context specific arguments and flags.
+func proxy(ctx *cli.Context) (p *registry.Proxy, err error) {
+	var loginServer, dataEndpoint string
+
+	if loginServer, dataEndpoint, err = resolveAll(ctx); err != nil {
+		return nil, err
+	}
+
+	if ctx.Bool(traceStr) {
+		logger = logger.With().Logger().Level(zerolog.TraceLevel)
+	} else {
+		logger = logger.With().Logger().Level(zerolog.InfoLevel)
+	}
+
+	return registry.NewProxy(http.DefaultTransport,
+		&registry.Options{
+			LoginServer:  loginServer,
+			Username:     ctx.String(userNameStr),
+			Password:     ctx.String(passwordStr),
+			DataEndpoint: dataEndpoint,
+			Insecure:     ctx.Bool(insecureStr),
+		},
+		logger)
+}
+
+// resolveAll attempts to resolve the endpoints specified in the
 func resolveAll(ctx *cli.Context) (loginServer, dataEndpoint string, err error) {
 	hostnames := []string{}
 
@@ -86,6 +122,7 @@ func resolve(hostname string) error {
 			return err
 		}
 		if cname == cur {
+			// No more aliases.
 			break
 		}
 		path = append(path, cname)

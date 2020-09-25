@@ -8,16 +8,20 @@ import (
 
 func main() {
 	app := &cli.App{
-		Name:    "runner",
-		Usage:   "ACR Conformance - evaluate if registry APIs conform to specs",
+		Name:    "acr",
+		Usage:   "ACR Check Health - evaluate the health of a registry",
 		Version: "0.1.0",
 		Authors: []*cli.Author{
 			{
 				Name: "Aviral Takkar",
 			},
 		},
+		Flags: []cli.Flag{
+			traceFlag,
+		},
 		Commands: []*cli.Command{
 			pingCommand,
+			checkHealthCommand,
 		},
 	}
 

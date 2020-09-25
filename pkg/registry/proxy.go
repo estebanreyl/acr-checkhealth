@@ -5,13 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/rs/zerolog"
-)
+	rhttp "github.com/aviral26/acr/checkhealth/pkg/http"
 
-const (
-	// Registry REST routes
-	routeFrontendPing     = "/v2/"
-	routeDataEndpointPing = "/"
+	"github.com/rs/zerolog"
 )
 
 // Options configures the proxy.
@@ -34,13 +30,13 @@ type Options struct {
 
 // Proxy acts as a proxy to a remote registry.
 type Proxy struct {
-	http.RoundTripper
+	rhttp.RoundTripper
 	*Options
 	zerolog.Logger
 }
 
 // NewProxy creates a new registry proxy.
-func NewProxy(rt http.RoundTripper, opts *Options, logger zerolog.Logger) (*Proxy, error) {
+func NewProxy(tripper http.RoundTripper, opts *Options, logger zerolog.Logger) (*Proxy, error) {
 	if opts == nil {
 		return nil, errors.New("opts required")
 	}
@@ -49,70 +45,98 @@ func NewProxy(rt http.RoundTripper, opts *Options, logger zerolog.Logger) (*Prox
 		return nil, errors.New("login server name required")
 	}
 
-	if rt == nil {
-		rt = http.DefaultTransport
+	if tripper == nil {
+		return nil, errors.New("round tripper required")
 	}
 	return &Proxy{
-		RoundTripper: rt,
+		RoundTripper: rhttp.RoundTripperWithContext{Logger: logger, Base: tripper},
 		Options:      opts,
 		Logger:       logger,
 	}, nil
 }
 
-// Ping pings various registry endpoints.
+// Ping pings various registry endpoints with different auth modes.
 func (p Proxy) Ping() (err error) {
-	url := fmt.Sprintf("%s://%s%s", p.scheme(), p.LoginServer, routeFrontendPing)
+	p.Logger.Info().Msg("pinging frontend")
+	url := p.url(p.LoginServer, routeFrontendPing)
+	regReq := registryRequest{
+		method: http.MethodGet,
+		url:    url,
+	}
 
-	if err = p.doNoAuth(url, http.StatusUnauthorized); err != nil {
+	if _, err = p.do(regReq, http.StatusUnauthorized, noAuth); err != nil {
 		return err
 	}
 
-	if err = p.doBasicAuth(url, http.StatusOK); err != nil {
-		return err
-	}
+	if p.Username != "" {
+		if _, err = p.do(regReq, http.StatusOK, basicAuth); err != nil {
+			return err
+		}
 
-	if err = p.doBearerAuth(url, http.StatusOK); err != nil {
-		return err
+		if _, err = p.do(regReq, http.StatusOK, bearerAuth); err != nil {
+			return err
+		}
 	}
 
 	if p.DataEndpoint != "" {
-		url := fmt.Sprintf("%s://%s%s", p.scheme(), p.DataEndpoint, routeDataEndpointPing)
-		return p.doNoAuth(url, http.StatusForbidden)
+		p.Logger.Info().Msg("pinging data proxy")
+		regReq := registryRequest{
+			method: http.MethodGet,
+			url:    p.url(p.DataEndpoint, routeDataEndpointPing),
+		}
+
+		if _, err := p.do(regReq, http.StatusForbidden, noAuth); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-func (p Proxy) scheme() string {
+// CheckHealth the health of core registry APIs.
+func (p Proxy) CheckHealth() error {
+	return p.oci()
+}
+
+// scheme determines the HTTP scheme of the request url.
+func (p Proxy) url(hostname, route string) string {
 	scheme := "https"
 	if p.Insecure {
 		scheme = "http"
 	}
-	return scheme
+	return fmt.Sprintf("%s://%s%s", scheme, hostname, route)
 }
 
-func (p Proxy) doNoAuth(url string, expected int) error {
-	return do(url, newNoAuthTransport(p.RoundTripper, p.Logger), expected)
-}
+func (p Proxy) do(regReq registryRequest, expected int, at authType) (tripInfo rhttp.RoundTripInfo, err error) {
+	var t transport
+	switch at {
+	case noAuth:
+		t, err = newNoAuthTransport(p.RoundTripper, p.Logger)
+		if err != nil {
+			return tripInfo, err
+		}
 
-func (p Proxy) doBasicAuth(url string, expected int) error {
-	return do(url, newBasicAuthTransport(p.RoundTripper, p.Username, p.Password, p.Logger), expected)
-}
+	case basicAuth:
+		t, err = newBasicAuthTransport(p.RoundTripper, p.Username, p.Password, p.Logger)
+		if err != nil {
+			return tripInfo, err
+		}
+	case bearerAuth:
+		t, err = newBearerAuthTransport(p.RoundTripper, p.Username, p.Password, p.Logger)
+		if err != nil {
+			return tripInfo, err
+		}
+	default:
+		return tripInfo, fmt.Errorf("unknown auth type: %v", at)
+	}
 
-func (p Proxy) doBearerAuth(url string, expected int) error {
-	return do(url, newBearerAuthTransport(p.RoundTripper, p.Username, p.Password, p.Logger), expected)
-}
-
-func do(url string, t transport, expected int) error {
-	req, err := http.NewRequest(http.MethodHead, url, nil)
+	result, err := t.RoundTrip(regReq)
 	if err != nil {
-		return err
+		return result, err
 	}
-
-	result, err := t.RoundTrip(req)
 	if result.Response.Code != expected {
-		return fmt.Errorf("invalid response code, expected: %v, got: %v", expected, result.Response.Code)
+		return result, fmt.Errorf("invalid response code, expected: %v, got: %v", expected, result.Response.Code)
 	}
 
-	return nil
+	return result, nil
 }

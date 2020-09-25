@@ -1,9 +1,6 @@
 package main
 
 import (
-	"net/http"
-
-	"github.com/aviral26/acr/conformance/pkg/registry"
 	"github.com/urfave/cli/v2"
 )
 
@@ -21,20 +18,7 @@ var pingCommand = &cli.Command{
 }
 
 func runPing(ctx *cli.Context) (err error) {
-	loginServer := ""
-	dataEndpoint := ""
-	if loginServer, dataEndpoint, err = resolveAll(ctx); err != nil {
-		return err
-	}
-
-	proxy, err := registry.NewProxy(http.DefaultTransport,
-		&registry.Options{
-			LoginServer:  loginServer,
-			Username:     ctx.String(userNameStr),
-			Password:     ctx.String(passwordStr),
-			DataEndpoint: dataEndpoint,
-		},
-		logger)
+	proxy, err := proxy(ctx)
 	if err != nil {
 		return err
 	}
