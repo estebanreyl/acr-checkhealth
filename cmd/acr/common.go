@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/aviral26/acr/checkhealth/pkg/registry"
+	"github.com/aviral26/acr-checkhealth/pkg/registry"
 	"github.com/rs/zerolog"
 	"github.com/urfave/cli/v2"
 )

@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/aviral26/acr/checkhealth/pkg/io"
+	"github.com/aviral26/acr-checkhealth/pkg/io"
 	"github.com/opencontainers/go-digest"
 	"github.com/rs/zerolog"
 )

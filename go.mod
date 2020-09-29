@@ -1,4 +1,4 @@
-module github.com/aviral26/acr/checkhealth
+module github.com/aviral26/acr-checkhealth
 
 go 1.15
 

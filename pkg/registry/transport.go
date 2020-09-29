@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"strings"
 
-	rhttp "github.com/aviral26/acr/checkhealth/pkg/http"
-	"github.com/aviral26/acr/checkhealth/pkg/io"
+	rhttp "github.com/aviral26/acr-checkhealth/pkg/http"
+	"github.com/aviral26/acr-checkhealth/pkg/io"
 	"github.com/rs/zerolog"
 )
 

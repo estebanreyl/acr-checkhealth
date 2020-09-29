@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	rhttp "github.com/aviral26/acr/checkhealth/pkg/http"
+	rhttp "github.com/aviral26/acr-checkhealth/pkg/http"
 
 	"github.com/rs/zerolog"
 )
