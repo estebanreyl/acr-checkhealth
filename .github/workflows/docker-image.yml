@@ -5,28 +5,27 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-    
+
 jobs:
 
   build-and-push:
 
     runs-on: ubuntu-latest
+    env:
+      REPO: ${{ secrets.ACR_LOGIN_SERVER }}/${{ secrets.ACR_REPO_NAME }}
+      TAG_1 : ${{ secrets.ACR_LOGIN_SERVER }}/${{ secrets.ACR_REPO_NAME }}:${{ github.sha }}
+      TAG_2: ${{ secrets.ACR_LOGIN_SERVER }}/${{ secrets.ACR_REPO_NAME }}:latest
 
     steps:
-    - name: Get current date
-      id: date
-      run: echo "::set-env name=DATE_TAG::$(date +%s)"
-        
     - name: Azure Container Registry Login
-      uses: Azure/docker-login@v1
-      with:
-        username: ${{ secrets.ACR_LOGIN_USERNAME }}
-        password: ${{ secrets.ACR_LOGIN_PASSWORD }} 
-        login-server: ${{ secrets.ACR_LOGIN_SERVER }}
-         
-    - uses: actions/checkout@v2
-    - name: Build the Docker image
-      run: docker build --tag ${{ secrets.ACR_LOGIN_SERVER }}/${{ secrets.ACR_REPO_NAME }}:$DATE_TAG --tag ${{ secrets.ACR_LOGIN_SERVER }}/${{ secrets.ACR_REPO_NAME }}:latest --file ./DOCKERFILE .
+      run: echo ${{ secrets.ACR_LOGIN_PASSWORD }} | docker login ${{ secrets.ACR_LOGIN_SERVER }} -u ${{ secrets.ACR_LOGIN_USERNAME }} --password-stdin
 
-    - name: Push to ACR
-      run: docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ secrets.ACR_REPO_NAME }}:$DATE_TAG && docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ secrets.ACR_REPO_NAME }}:latest
+    - uses: actions/checkout@v2
+    - name: Build docker image
+      run: docker build --tag ${{ env.TAG_1 }} --tag ${{ env.TAG_2 }} --file ./DOCKERFILE .
+
+    - name: Push tag 1
+      run: docker push ${{ env.TAG_1 }}
+
+    - name: Push tag 2
+      run: docker push ${{ env.TAG_2 }}
