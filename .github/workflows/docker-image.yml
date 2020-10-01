@@ -1,0 +1,31 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  DATE_TAG: ${{ date +%s }}
+
+jobs:
+
+  build-and-push:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Azure Container Registry Login
+      uses: Azure/docker-login@v1
+      with:
+        username: ${{ secrets.ACR_LOGIN_USERNAME }}
+        password: ${{ secrets.ACR_LOGIN_PASSWORD }} 
+        login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+         
+    - uses: actions/checkout@v2
+    - name: Build the Docker image
+      run: docker build --tag ${{ secrets.ACR_LOGIN_SERVER }}/${{ secrets.ACR_REPO_NAME }}:$DATE_TAG --tag ${{ secrets.ACR_LOGIN_SERVER }}/${{ secrets.ACR_REPO_NAME }}:latest .
+
+    - name: Push to ACR
+      run: docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ secrets.ACR_REPO_NAME }}:$DATE_TAG && docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ secrets.ACR_REPO_NAME }}:latest
