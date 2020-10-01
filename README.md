@@ -1,4 +1,5 @@
 ![Go](https://github.com/aviral26/acr-checkhealth/workflows/Go/badge.svg?branch=main)
+![Docker Image CI](https://github.com/aviral26/acr-checkhealth/workflows/Docker%20Image%20CI/badge.svg)
 
 # [Azure Container Registry](https://aka.ms/acr) - Check Health
 This tool can be used to check various ACR APIs to evaluate the health of your registry endpoints.
