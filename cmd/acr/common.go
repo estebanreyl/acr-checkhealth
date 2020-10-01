@@ -54,7 +54,7 @@ var (
 )
 
 var (
-	logger = zerolog.New(os.Stdout).With().Timestamp().Logger()
+	logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout}).With().Timestamp().Logger()
 )
 
 // proxy creates an new proxy instance from context specific arguments and flags.
