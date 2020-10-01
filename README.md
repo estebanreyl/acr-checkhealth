@@ -66,7 +66,7 @@ aviral@Azure:~$ acr ping -u avtakkareus2euap -p *** -d avtakkareus2euap.eastus2e
 
 ### Check Health
 
-This will try to push and pull a small OCI image.
+This will try to push and pull a small OCI image. Data integrity is verified - both the size and digest of the pushed data must match the pulled data for success.
 
 ```shell
 aviral@Azure:~$ acr check-health -u avtakkareus2euap -p *** -d avtakkareus2euap.eastus2euap.data.azurecr.io avtakkareus2euap.azurecr.io
