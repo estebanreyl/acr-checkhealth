@@ -1,4 +1,4 @@
-BINARY_PATH=/usr/local/go/bin/acr
+BINARY_PATH=./bin/acr
 GOCMD=go
 GOBUILD=$(GOCMD) build
 GOTEST=$(GOCMD) test

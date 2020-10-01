@@ -1,6 +1,6 @@
 FROM golang:1.15.2-alpine3.12 as builder
 
-ENV SRC /src
+ENV WORK_DIR /acr-checkhealth
 
 ARG GOOS=linux
 ARG GOARCH=amd64
@@ -8,9 +8,9 @@ ARG GOARCH=amd64
 RUN set -ex \
     && apk --update add --no-cache make git
 
-COPY . $SRC
+COPY . $WORK_DIR
 
-RUN cd $SRC \
+RUN cd $WORK_DIR \
     && make
 
 FROM alpine:3.12
@@ -25,7 +25,7 @@ RUN apk --update add --no-cache ca-certificates && \
 
 WORKDIR $WORK_DIR
 
-COPY --from=builder --chown=acr:root /usr/local/go/bin/acr ./
+COPY --from=builder --chown=acr:root /acr-checkhealth/bin/acr ./
 
 USER acr:acr-checkhealth
 
