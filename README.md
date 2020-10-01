@@ -1,18 +1,29 @@
 ![Go](https://github.com/aviral26/acr-checkhealth/workflows/Go/badge.svg?branch=main)
 ![Docker Image CI](https://github.com/aviral26/acr-checkhealth/workflows/Docker%20Image%20CI/badge.svg)
 
-# [Azure Container Registry](https://aka.ms/acr) - Check Health
-This tool can be used to check various ACR APIs to evaluate the health of your registry endpoints.
+# Azure Container Registry - Check Health
+This tool can be used to check various [ACR](https://aka.ms/acr) APIs to evaluate the health of your registry endpoints.
+
+## Build
+Use the `Makefile` to build locally:
+```shell
+make
+```
+Alternatively, build a docker image:
+```shell
+docker build -t acr .
+```
+To use the docker image, pass command arguments directly to `docker run acr`.
 
 ## Usage
 
-```powershell
-PS D:\acr-checkhealth> ./acr
+```shell
+aviral@Azure:~$ acr
 NAME:
    acr - ACR Check Health - evaluate the health of a registry
 
 USAGE:
-   acr.exe [global options] command [command options] [arguments...]
+   acr [global options] command [command options] [arguments...]
 
 VERSION:
    0.1.0
@@ -37,29 +48,35 @@ Use this global option to print detailed HTTP requests.
 
 > **Warning:** this will print secrets
 
+## Examples
+The following examples use admin credentials.
+
 ### Ping Registry
 
-```powershell
-PS D:\acr-checkhealth> ./acr ping -u avtakkareus2euap -p <admin-access-key> -d avtakkareus2euap.eastus2euap.data.azurecr.io avtakkareus2euap.azurecr.io
-{"level":"info","time":"2020-09-28T05:53:32-07:00","message":"DNS:  avtakkareus2euap.azurecr.io -> avtakkareus2euap.privatelink.azurecr.io. -> e43095e046a7461db1751272be587c98.trafficmanager.net. -> eus2euap-2-az.fe.azcr.io. -> eus2euap-2-acr-az-reg.trafficmanager.net. -> r0916cnre-2-az.eastus2euap.cloudapp.azure.com. -> 20.39.15.130"}
-{"level":"info","time":"2020-09-28T05:53:33-07:00","message":"DNS:  avtakkareus2euap.eastus2euap.data.azurecr.io -> avtakkareus2euap.eastus2euap.data.privatelink.azurecr.io. -> eus2euap-0.data.azcr.io. -> eus2euap-acr-dp.trafficmanager.net. -> d0831cnre.eastus2euap.cloudapp.azure.com. -> 40.89.120.3"}
-{"level":"info","time":"2020-09-28T05:53:33-07:00","message":"pinging frontend"}
-{"level":"info","time":"2020-09-28T05:53:33-07:00","message":"pinging data proxy"}
-{"level":"info","time":"2020-09-28T05:53:34-07:00","message":"success"}
+This will ping the ACR metadata endpoints with and without authentication and the ACR data endpoint without authentication.
+
+```shell
+aviral@Azure:~$ acr ping -u avtakkareus2euap -p *** -d avtakkareus2euap.eastus2euap.data.azurecr.io avtakkareus2euap.azurecr.io
+{"level":"info","time":"2020-10-01T09:46:30Z","message":"DNS:  avtakkareus2euap.azurecr.io -> r0927cnre-2-az.eastus2euap.cloudapp.azure.com. -> 20.39.15.131"}
+{"level":"info","time":"2020-10-01T09:46:31Z","message":"DNS:  avtakkareus2euap.eastus2euap.data.azurecr.io -> d0929cnre.eastus2euap.cloudapp.azure.com. -> 40.89.120.6"}
+{"level":"info","time":"2020-10-01T09:46:31Z","message":"pinging frontend"}
+{"level":"info","time":"2020-10-01T09:46:32Z","message":"pinging data proxy"}
+{"level":"info","time":"2020-10-01T09:46:32Z","message":"ping was successful"}
 ```
-
-
 
 ### Check Health
 
-```powershell
-PS D:\acr-checkhealth> ./acr check-health -u avtakkareus2euap -p <admin-access-key> -d avtakkareus2euap.eastus2euap.data.azurecr.io avtakkareus2euap.azurecr.io
-{"level":"info","time":"2020-09-28T05:57:28-07:00","message":"DNS:  avtakkareus2euap.azurecr.io -> avtakkareus2euap.privatelink.azurecr.io. -> e43095e046a7461db1751272be587c98.trafficmanager.net. -> eus2euap-2-az.fe.azcr.io. -> eus2euap-2-acr-az-reg.trafficmanager.net. -> r0916cnre-2-az.eastus2euap.cloudapp.azure.com. -> 20.39.15.130"}
-{"level":"info","time":"2020-09-28T05:57:28-07:00","message":"DNS:  avtakkareus2euap.eastus2euap.data.azurecr.io -> avtakkareus2euap.eastus2euap.data.privatelink.azurecr.io. -> eus2euap-0.data.azcr.io. -> eus2euap-acr-dp.trafficmanager.net. -> d0831cnre.eastus2euap.cloudapp.azure.com. -> 40.89.120.3"}
-{"level":"info","time":"2020-09-28T05:57:28-07:00","message":"pinging frontend"}
-{"level":"info","time":"2020-09-28T05:57:29-07:00","message":"pinging data proxy"}
-{"level":"info","time":"2020-09-28T05:57:30-07:00","message":"checking OCI push"}
-{"level":"info","time":"2020-09-28T05:57:33-07:00","message":"checking OCI pull"}
-{"level":"info","time":"2020-09-28T05:57:35-07:00","message":"success"}
+This will try to push and pull a small OCI image.
+
+```shell
+aviral@Azure:~$ acr check-health -u avtakkareus2euap -p *** -d avtakkareus2euap.eastus2euap.data.azurecr.io avtakkareus2euap.azurecr.io
+{"level":"info","time":"2020-10-01T09:47:14Z","message":"DNS:  avtakkareus2euap.azurecr.io -> r0927cnre-2-az.eastus2euap.cloudapp.azure.com. -> 20.39.15.131"}
+{"level":"info","time":"2020-10-01T09:47:14Z","message":"DNS:  avtakkareus2euap.eastus2euap.data.azurecr.io -> d0929cnre.eastus2euap.cloudapp.azure.com. -> 40.89.120.6"}
+{"level":"info","time":"2020-10-01T09:47:14Z","message":"pinging frontend"}
+{"level":"info","time":"2020-10-01T09:47:15Z","message":"pinging data proxy"}
+{"level":"info","time":"2020-10-01T09:47:15Z","message":"ping was successful"}
+{"level":"info","time":"2020-10-01T09:47:15Z","message":"checking OCI push"}
+{"level":"info","time":"2020-10-01T09:47:18Z","message":"checking OCI pull"}
+{"level":"info","time":"2020-10-01T09:47:19Z","message":"check-health was successful"}
 ```
 
