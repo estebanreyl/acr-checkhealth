@@ -57,11 +57,11 @@ This will ping the ACR metadata endpoints with and without authentication and th
 
 ```shell
 aviral@Azure:~$ acr ping -u avtakkareus2euap -p *** -d avtakkareus2euap.eastus2euap.data.azurecr.io avtakkareus2euap.azurecr.io
-{"level":"info","time":"2020-10-01T09:46:30Z","message":"DNS:  avtakkareus2euap.azurecr.io -> r0927cnre-2-az.eastus2euap.cloudapp.azure.com. -> 20.39.15.131"}
-{"level":"info","time":"2020-10-01T09:46:31Z","message":"DNS:  avtakkareus2euap.eastus2euap.data.azurecr.io -> d0929cnre.eastus2euap.cloudapp.azure.com. -> 40.89.120.6"}
-{"level":"info","time":"2020-10-01T09:46:31Z","message":"pinging frontend"}
-{"level":"info","time":"2020-10-01T09:46:32Z","message":"pinging data proxy"}
-{"level":"info","time":"2020-10-01T09:46:32Z","message":"ping was successful"}
+10:19AM INF DNS:  avtakkareus2euap.azurecr.io -> r0927cnre-2-az.eastus2euap.cloudapp.azure.com. -> 20.39.15.131
+10:19AM INF DNS:  avtakkareus2euap.eastus2euap.data.azurecr.io -> d0929cnre.eastus2euap.cloudapp.azure.com. -> 40.89.120.6
+10:19AM INF pinging frontend
+10:19AM INF pinging data proxy
+10:19AM INF ping was successful
 ```
 
 ### Check Health
@@ -70,13 +70,13 @@ This will try to push and pull a small OCI image.
 
 ```shell
 aviral@Azure:~$ acr check-health -u avtakkareus2euap -p *** -d avtakkareus2euap.eastus2euap.data.azurecr.io avtakkareus2euap.azurecr.io
-{"level":"info","time":"2020-10-01T09:47:14Z","message":"DNS:  avtakkareus2euap.azurecr.io -> r0927cnre-2-az.eastus2euap.cloudapp.azure.com. -> 20.39.15.131"}
-{"level":"info","time":"2020-10-01T09:47:14Z","message":"DNS:  avtakkareus2euap.eastus2euap.data.azurecr.io -> d0929cnre.eastus2euap.cloudapp.azure.com. -> 40.89.120.6"}
-{"level":"info","time":"2020-10-01T09:47:14Z","message":"pinging frontend"}
-{"level":"info","time":"2020-10-01T09:47:15Z","message":"pinging data proxy"}
-{"level":"info","time":"2020-10-01T09:47:15Z","message":"ping was successful"}
-{"level":"info","time":"2020-10-01T09:47:15Z","message":"checking OCI push"}
-{"level":"info","time":"2020-10-01T09:47:18Z","message":"checking OCI pull"}
-{"level":"info","time":"2020-10-01T09:47:19Z","message":"check-health was successful"}
+10:18AM INF DNS:  avtakkareus2euap.azurecr.io -> r0927cnre-2-az.eastus2euap.cloudapp.azure.com. -> 20.39.15.131
+10:18AM INF DNS:  avtakkareus2euap.eastus2euap.data.azurecr.io -> d0929cnre.eastus2euap.cloudapp.azure.com. -> 40.89.120.6
+10:18AM INF pinging frontend
+10:18AM INF pinging data proxy
+10:18AM INF ping was successful
+10:18AM INF checking OCI push
+10:18AM INF checking OCI pull
+10:18AM INF check-health was successful
 ```
 
