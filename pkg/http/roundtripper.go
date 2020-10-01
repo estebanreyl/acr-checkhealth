@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/aviral26/acr-checkhealth/pkg/io"
@@ -31,20 +32,19 @@ type Request struct {
 
 // Response respresents a response received from the registry.
 type Response struct {
-	Code            int           `json:"code"`
-	HeaderChallenge string        `json:"Www-Authenticate"`
-	HeaderLocation  *url.URL      `json:"redirectLocation"`
-	Size            int64         `json:"size"`
-	SHA256Sum       digest.Digest `json:"sha256"`
-
-	Body []byte
+	Code            int             `json:"code,omitempty"`
+	HeaderChallenge string          `json:"Www-Authenticate,omitempty"`
+	HeaderLocation  *url.URL        `json:"redirectLocation,omitempty"`
+	Size            int64           `json:"size,omitempty"`
+	SHA256Sum       digest.Digest   `json:"sha256,omitempty"`
+	Body            json.RawMessage `json:"body,omitempty"`
 }
 
 // RoundTripInfo represents information about a network round-trip.
 type RoundTripInfo struct {
 	Request  `json:"request"`
 	Response `json:"response"`
-	Elapsed  time.Duration `json:"elapsed"`
+	Elapsed  string `json:"elapsed"`
 }
 
 // RoundTripper provides a means to do an HTTP/HTTPs round trip.
@@ -70,9 +70,18 @@ func (r RoundTripperWithContext) RoundTrip(req *http.Request) (RoundTripInfo, er
 		},
 	}
 	defer func() {
-		info.Elapsed = time.Since(info.StartedAt)
+		info.Elapsed = time.Since(info.StartedAt).String()
 		var msg string
-		bytes, err := json.Marshal(info)
+		bytes, err := json.MarshalIndent(info, "", "   ")
+
+		if err != nil && strings.HasPrefix(err.Error(), "json: error calling MarshalJSON for type") {
+			// Hack: This could be due to a non-JSON response. Attempt to modify the response body to JSON.
+			original := info.Response.Body
+			info.Response.Body = json.RawMessage(fmt.Sprintf("{\"pretty\": \"%s\"}", url.PathEscape(string(original))))
+			bytes, err = json.MarshalIndent(info, "", "   ")
+			info.Response.Body = original
+		}
+
 		if err != nil {
 			msg = fmt.Sprintf("marshal_error: %v", err)
 		} else {

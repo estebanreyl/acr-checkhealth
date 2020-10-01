@@ -8,13 +8,8 @@ var pingCommand = &cli.Command{
 	Name:      "ping",
 	Usage:     "ping registry endpoints",
 	ArgsUsage: "<login-server>",
-	Flags: []cli.Flag{
-		usernameFlag,
-		passwordFlag,
-		dataEndpointFlag,
-		insecureFlag,
-	},
-	Action: runPing,
+	Flags:     commonFlags,
+	Action:    runPing,
 }
 
 func runPing(ctx *cli.Context) (err error) {

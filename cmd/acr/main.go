@@ -6,22 +6,31 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+// Set at linking time.
+var (
+	Version = "dev"
+)
+
 func main() {
 	app := &cli.App{
 		Name:    "acr",
 		Usage:   "ACR Check Health - evaluate the health of a registry",
-		Version: "0.1.0",
+		Version: Version,
 		Authors: []*cli.Author{
 			{
 				Name: "Aviral Takkar",
 			},
 		},
 		Flags: []cli.Flag{
-			traceFlag,
+			&cli.BoolFlag{
+				Name:  traceStr,
+				Usage: "print trace logs with secrets",
+			},
 		},
 		Commands: []*cli.Command{
 			pingCommand,
 			checkHealthCommand,
+			referrersCommand,
 		},
 	}
 

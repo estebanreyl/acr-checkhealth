@@ -95,9 +95,9 @@ func newBearerAuthTransport(tripper rhttp.RoundTripper, username, password strin
 	return newTransport(tripper, username, password, bearerAuth, logger)
 }
 
-// RoundTrip makes an HTTP request and returns the response body.
+// roundTrip makes an HTTP request and returns the response body.
 // It supports basic and bearer authorization.
-func (t transport) RoundTrip(regReq registryRequest) (tripInfo rhttp.RoundTripInfo, err error) {
+func (t transport) roundTrip(regReq registryRequest) (tripInfo rhttp.RoundTripInfo, err error) {
 	req, err := http.NewRequest(regReq.method, regReq.url, regReq.body)
 	if err != nil {
 		return tripInfo, err
@@ -122,7 +122,6 @@ func (t transport) RoundTrip(regReq registryRequest) (tripInfo rhttp.RoundTripIn
 		if tripInfo.Response.Code != http.StatusUnauthorized {
 			return tripInfo, errors.New("failed to get challenge")
 		}
-
 		scheme, params := parseAuthHeader(tripInfo.Response.HeaderChallenge)
 		if scheme == schemeBearer {
 			token, err := t.getToken(params)
@@ -131,6 +130,8 @@ func (t transport) RoundTrip(regReq registryRequest) (tripInfo rhttp.RoundTripIn
 			}
 
 			req.Header.Set(rhttp.HeaderAuthorization, "Bearer "+token)
+		} else {
+			return tripInfo, errors.New("server does not support bearer authentication")
 		}
 	case basicAuth:
 		if t.username == "" {

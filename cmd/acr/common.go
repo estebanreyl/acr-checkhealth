@@ -16,73 +16,99 @@ import (
 // Common flag names
 const (
 	insecureStr     = "insecure"
+	basicAuthStr    = "basicauth"
 	userNameStr     = "username"
 	passwordStr     = "password"
 	dataEndpointStr = "dataendpoint"
 	traceStr        = "trace"
 )
 
-// Common cli flags
-var (
-	insecureFlag = &cli.BoolFlag{
+// commonFlags is a collection of cli flags common to all commands.
+var commonFlags = []cli.Flag{
+	&cli.BoolFlag{
 		Name:  insecureStr,
 		Usage: "enable remote access over HTTP",
-	}
-
-	usernameFlag = &cli.StringFlag{
+	},
+	&cli.StringFlag{
 		Name:    userNameStr,
 		Aliases: []string{"u"},
 		Usage:   "login username",
-	}
-
-	passwordFlag = &cli.StringFlag{
+	},
+	&cli.StringFlag{
 		Name:    passwordStr,
 		Aliases: []string{"p"},
 		Usage:   "login password",
-	}
-
-	dataEndpointFlag = &cli.StringFlag{
+	},
+	&cli.StringFlag{
 		Name:    dataEndpointStr,
 		Aliases: []string{"d"},
 		Usage:   "endpoint for data download",
-	}
-
-	traceFlag = &cli.BoolFlag{
-		Name:  traceStr,
-		Usage: "print trace logs",
-	}
-)
+	},
+	&cli.BoolFlag{
+		Name:  basicAuthStr,
+		Usage: "use basic auth mode for data operations",
+	},
+}
 
 var (
 	logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout}).With().Timestamp().Logger()
 )
 
 // proxy creates an new proxy instance from context specific arguments and flags.
-func proxy(ctx *cli.Context) (p *registry.Proxy, err error) {
-	var loginServer, dataEndpoint string
-
-	if loginServer, dataEndpoint, err = resolveAll(ctx); err != nil {
-		return nil, err
-	}
-
+func proxy(ctx *cli.Context) (*registry.Proxy, error) {
 	if ctx.Bool(traceStr) {
 		logger = logger.With().Logger().Level(zerolog.TraceLevel)
 	} else {
 		logger = logger.With().Logger().Level(zerolog.InfoLevel)
 	}
 
+	username, password, basicAuthMode, err := getAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	loginServer, dataEndpoint, err := resolveAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	return registry.NewProxy(http.DefaultTransport,
 		&registry.Options{
-			LoginServer:  loginServer,
-			Username:     ctx.String(userNameStr),
-			Password:     ctx.String(passwordStr),
-			DataEndpoint: dataEndpoint,
-			Insecure:     ctx.Bool(insecureStr),
+			LoginServer:   loginServer,
+			Username:      username,
+			Password:      password,
+			DataEndpoint:  dataEndpoint,
+			Insecure:      ctx.Bool(insecureStr),
+			BasicAuthMode: basicAuthMode,
 		},
 		logger)
 }
 
-// resolveAll attempts to resolve the endpoints specified in the
+// getAuth gets authentication information from context.
+func getAuth(ctx *cli.Context) (username, password string, basicAuthMode bool, err error) {
+	username = ctx.String(userNameStr)
+	password = ctx.String(passwordStr)
+	basicAuthMode = ctx.Bool(basicAuthStr)
+
+	if username != "" && password == "" {
+		err = errors.New("password required with username")
+		return
+	}
+
+	if password != "" && username == "" {
+		err = errors.New("username not specified")
+		return
+	}
+
+	if username == "" && basicAuthMode {
+		err = errors.New("cannot use basic auth without username")
+		return
+	}
+
+	return username, password, basicAuthMode, nil
+}
+
+// resolveAll attempts to resolve the endpoints specified in the context.
 func resolveAll(ctx *cli.Context) (loginServer, dataEndpoint string, err error) {
 	hostnames := []string{}
 

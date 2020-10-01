@@ -6,13 +6,8 @@ var checkHealthCommand = &cli.Command{
 	Name:      "check-health",
 	Usage:     "check health of registry endpoints",
 	ArgsUsage: "<login-server>",
-	Flags: []cli.Flag{
-		usernameFlag,
-		passwordFlag,
-		dataEndpointFlag,
-		insecureFlag,
-	},
-	Action: runCheckHealth,
+	Flags:     commonFlags,
+	Action:    runCheckHealth,
 }
 
 func runCheckHealth(ctx *cli.Context) (err error) {

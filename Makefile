@@ -8,7 +8,7 @@ clean:
 	rm -f $(BINARY_PATH)
 
 build:
-	$(GOBUILD) -o $(BINARY_PATH) $(MAIN_FOLDER)
+	$(GOBUILD) -ldflags="-X main.Version=`git log --format="%h" -n 1`" -o $(BINARY_PATH) $(MAIN_FOLDER)
 
 test:
 	$(GOTEST) -v -vet=off $(MAIN_FOLDER)
