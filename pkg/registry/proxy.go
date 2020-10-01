@@ -90,12 +90,20 @@ func (p Proxy) Ping() (err error) {
 		}
 	}
 
+	p.Logger.Info().Msg("ping was successful")
+
 	return nil
 }
 
 // CheckHealth the health of core registry APIs.
 func (p Proxy) CheckHealth() error {
-	return p.oci()
+	if err := p.oci(); err != nil {
+		return err
+	}
+
+	p.Logger.Info().Msg("check-health was successful")
+
+	return nil
 }
 
 // scheme determines the HTTP scheme of the request url.

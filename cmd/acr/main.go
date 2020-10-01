@@ -27,7 +27,5 @@ func main() {
 
 	if err := app.Run(os.Args); err != nil {
 		logger.Fatal().Msg(err.Error())
-	} else {
-		logger.Info().Msg("success")
 	}
 }
