@@ -1,5 +1,5 @@
 BINARY_PATH=/usr/local/go/bin/acr
-GOCMD=/usr/local/go/bin/go
+GOCMD=go
 GOBUILD=$(GOCMD) build
 GOTEST=$(GOCMD) test
 MAIN_FOLDER=./cmd/acr/
