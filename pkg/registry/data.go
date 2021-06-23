@@ -20,7 +20,7 @@ const (
 const (
 	author = "ACR Check Health"
 
-	mediaType = "application/acr.checkhealth.test"
+	testMediaType = "application/acr.checkhealth.test"
 
 	layer = "Test layer authored by " + author
 

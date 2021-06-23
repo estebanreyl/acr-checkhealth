@@ -95,13 +95,24 @@ func (p Proxy) Ping() (err error) {
 	return nil
 }
 
-// CheckHealth the health of core registry APIs.
+// CheckHealth checks the health of core registry APIs.
 func (p Proxy) CheckHealth() error {
-	if err := p.pushPullVerify(); err != nil {
+	if err := p.verifySimple(); err != nil {
 		return err
 	}
 
 	p.Logger.Info().Msg("check-health was successful")
+
+	return nil
+}
+
+// CheckReferrers checks the registry's referrer APIs.
+func (p Proxy) CheckReferrers() error {
+	if err := p.verifyReferrers(); err != nil {
+		return err
+	}
+
+	p.Logger.Info().Msg("check-referrers was successful")
 
 	return nil
 }

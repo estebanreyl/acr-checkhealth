@@ -27,6 +27,7 @@ func main() {
 		Commands: []*cli.Command{
 			pingCommand,
 			checkHealthCommand,
+			referrersCommand,
 		},
 	}
 

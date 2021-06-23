@@ -6,125 +6,81 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/aviral26/acr-checkhealth/pkg/io"
 	"github.com/opencontainers/go-digest"
-	"github.com/opencontainers/image-spec/specs-go"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-// pushPullVerify pushes a small OCI image to the registry and pulls it.
-func (p Proxy) pushPullVerify() error {
-	p.Logger.Info().Msg("checking OCI push")
-
-	var (
-		repo = fmt.Sprintf("%v%v", repoPrefix, time.Now().Unix())
-		tag  = fmt.Sprintf("%v", time.Now().Unix())
-	)
-
-	configBytes, err := json.Marshal(ociConfig)
-	if err != nil {
-		return err
-	}
-
-	// Upload config blob
-	configDesc, err := p.v2PushBlob(repo, io.NewReader(strings.NewReader(string(configBytes))))
-	if err != nil {
-		return err
-	}
-
-	// Upload a layer
-	layerDesc, err := p.v2PushBlob(repo, io.NewReader(strings.NewReader(layer)))
-	if err != nil {
-		return err
-	}
-
-	ociManifest := v1.Manifest{
-		Versioned: specs.Versioned{SchemaVersion: 2},
-		Config: v1.Descriptor{
-			MediaType: mediaType,
-			Digest:    configDesc.Digest,
-			Size:      configDesc.Size,
-		},
-		Layers: []v1.Descriptor{
-			{
-				MediaType: mediaType,
-				Digest:    layerDesc.Digest,
-				Size:      layerDesc.Size,
-			},
-		},
-	}
-
-	manifestBytes, err := json.Marshal(ociManifest)
-	if err != nil {
-		return err
-	}
-
+// v2PushManifest pushes the data to repo with the given tag and media type, returning the digest and size
+// of pushed content.
+func (p Proxy) v2PushManifest(repo, tag, mediaType string, manifest v1.Manifest) (v1.Descriptor, error) {
 	manifestURL := p.url(p.LoginServer, fmt.Sprintf(routeManifest, repo, tag))
 
-	// Push manifest
+	manifestBytes, err := json.Marshal(manifest)
+	if err != nil {
+		return v1.Descriptor{}, err
+	}
+
 	regReq := registryRequest{
 		method:      http.MethodPut,
 		url:         manifestURL,
 		body:        io.NewReader(strings.NewReader(string(manifestBytes))),
-		contentType: v1.MediaTypeImageManifest,
+		contentType: mediaType,
 	}
 
 	_, err = p.do(regReq, http.StatusCreated, bearerAuth)
 	if err != nil {
-		return err
+		return v1.Descriptor{}, err
 	}
 
-	pushedManifestSize := regReq.body.N()
-	pushedManifestDigest := digest.NewDigest(digest.SHA256, regReq.body.SHA256Hash())
+	return v1.Descriptor{
+		MediaType: mediaType,
+		Digest:    digest.NewDigest(digest.SHA256, regReq.body.SHA256Hash()),
+		Size:      regReq.body.N(),
+	}, nil
+}
 
-	p.Logger.Info().Msg("checking OCI pull")
-	regReq = registryRequest{
+// v2PullManifest pulls manifest from repo specified by tag or digest and verifies the download size.
+func (p Proxy) v2PullManifest(repo, tag string, desc v1.Descriptor) (*v1.Manifest, error) {
+	manifestURL := p.url(p.LoginServer, fmt.Sprintf(routeManifest, repo, tag))
+
+	regReq := registryRequest{
 		method: http.MethodGet,
 		url:    manifestURL,
-		accept: v1.MediaTypeImageManifest,
+		accept: desc.MediaType,
 	}
 
 	manifestPullTripInfo, err := p.do(regReq, http.StatusOK, bearerAuth)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Validate we got what we sent
-	if manifestPullTripInfo.Response.Size != pushedManifestSize {
-		return fmt.Errorf("manifest size mismatch; pushed: %v, pulled: %v", pushedManifestSize, manifestPullTripInfo.Response.Size)
+	if manifestPullTripInfo.Response.Size != desc.Size {
+		return nil, fmt.Errorf("manifest size mismatch; expected: %v, got: %v", desc.Size, manifestPullTripInfo.Response.Size)
 	}
-	if manifestPullTripInfo.Response.SHA256Sum != pushedManifestDigest {
-		return fmt.Errorf("manifest digest mismatch; pushed: %v, pulled: %v", pushedManifestDigest, manifestPullTripInfo.Response.SHA256Sum)
+	if manifestPullTripInfo.Response.SHA256Sum != desc.Digest {
+		return nil, fmt.Errorf("manifest digest mismatch; expected: %v, got: %v", desc.Digest, manifestPullTripInfo.Response.SHA256Sum)
 	}
 
 	pulledManifest := &v1.Manifest{}
 	if err = json.Unmarshal(manifestPullTripInfo.Body, pulledManifest); err != nil {
-		return err
+		return nil, err
 	}
 
-	// Pull config blob
-	if err = p.v2PullBlob(repo, pulledManifest.Config.Digest); err != nil {
-		return err
-	}
-
-	// Pull layer blob
-	if err = p.v2PullBlob(repo, pulledManifest.Layers[0].Digest); err != nil {
-		return err
-	}
-
-	return nil
+	return pulledManifest, nil
 }
 
 // v2PullBlob pulls a blob from the registry and verifies the digest
-func (p Proxy) v2PullBlob(repo string, dgst digest.Digest) error {
+// TODO: add size validation
+func (p Proxy) v2PullBlob(repo string, desc v1.Descriptor) error {
 	var nextURL *url.URL
 
 	// Obtain SAS
 	{
 		regReq := registryRequest{
-			url:    p.url(p.LoginServer, fmt.Sprintf(routeBlobPull, repo, dgst)),
+			url:    p.url(p.LoginServer, fmt.Sprintf(routeBlobPull, repo, desc.Digest)),
 			method: http.MethodGet,
 		}
 
@@ -149,8 +105,8 @@ func (p Proxy) v2PullBlob(repo string, dgst digest.Digest) error {
 		}
 
 		// Validate data integrity
-		if tripInfo.Response.SHA256Sum != dgst {
-			return fmt.Errorf("blob digest mismatch; expected: %v, got: %v", dgst, tripInfo.Response.SHA256Sum)
+		if tripInfo.Response.SHA256Sum != desc.Digest {
+			return fmt.Errorf("blob digest mismatch; expected: %v, got: %v", desc.Digest, tripInfo.Response.SHA256Sum)
 		}
 	}
 
