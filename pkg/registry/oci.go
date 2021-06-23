@@ -14,8 +14,8 @@ import (
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-// oci pushes a small OCI image to the registry and pulls it.
-func (p Proxy) oci() error {
+// pushPullVerify pushes a small OCI image to the registry and pulls it.
+func (p Proxy) pushPullVerify() error {
 	p.Logger.Info().Msg("checking OCI push")
 
 	var (
@@ -48,7 +48,7 @@ func (p Proxy) oci() error {
 			Size:      configDesc.Size,
 		},
 		Layers: []v1.Descriptor{
-			v1.Descriptor{
+			{
 				MediaType: mediaType,
 				Digest:    layerDesc.Digest,
 				Size:      layerDesc.Size,

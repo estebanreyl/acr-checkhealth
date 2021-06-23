@@ -97,7 +97,7 @@ func (p Proxy) Ping() (err error) {
 
 // CheckHealth the health of core registry APIs.
 func (p Proxy) CheckHealth() error {
-	if err := p.oci(); err != nil {
+	if err := p.pushPullVerify(); err != nil {
 		return err
 	}
 
