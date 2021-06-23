@@ -82,7 +82,7 @@ func proxy(ctx *cli.Context) (p *registry.Proxy, err error) {
 		logger)
 }
 
-// resolveAll attempts to resolve the endpoints specified in the
+// resolveAll attempts to resolve the endpoints specified in the context.
 func resolveAll(ctx *cli.Context) (loginServer, dataEndpoint string, err error) {
 	hostnames := []string{}
 

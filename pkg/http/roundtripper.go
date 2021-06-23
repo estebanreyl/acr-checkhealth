@@ -31,20 +31,19 @@ type Request struct {
 
 // Response respresents a response received from the registry.
 type Response struct {
-	Code            int           `json:"code"`
-	HeaderChallenge string        `json:"Www-Authenticate"`
-	HeaderLocation  *url.URL      `json:"redirectLocation"`
-	Size            int64         `json:"size"`
-	SHA256Sum       digest.Digest `json:"sha256"`
-
-	Body []byte
+	Code            int             `json:"code"`
+	HeaderChallenge string          `json:"Www-Authenticate"`
+	HeaderLocation  *url.URL        `json:"redirectLocation"`
+	Size            int64           `json:"size"`
+	SHA256Sum       digest.Digest   `json:"sha256"`
+	Body            json.RawMessage `json:"body"`
 }
 
 // RoundTripInfo represents information about a network round-trip.
 type RoundTripInfo struct {
 	Request  `json:"request"`
 	Response `json:"response"`
-	Elapsed  time.Duration `json:"elapsed"`
+	Elapsed  string `json:"elapsed"`
 }
 
 // RoundTripper provides a means to do an HTTP/HTTPs round trip.
@@ -70,9 +69,9 @@ func (r RoundTripperWithContext) RoundTrip(req *http.Request) (RoundTripInfo, er
 		},
 	}
 	defer func() {
-		info.Elapsed = time.Since(info.StartedAt)
+		info.Elapsed = time.Since(info.StartedAt).String()
 		var msg string
-		bytes, err := json.Marshal(info)
+		bytes, err := json.MarshalIndent(info, "", "   ")
 		if err != nil {
 			msg = fmt.Sprintf("marshal_error: %v", err)
 		} else {
