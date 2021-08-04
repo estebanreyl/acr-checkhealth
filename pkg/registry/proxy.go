@@ -363,9 +363,11 @@ func (p Proxy) v2PushManifest(repo, tag, mediaType string, manifestBytes []byte)
 		return v1.Descriptor{}, err
 	}
 
+	dgst := digest.NewDigest(digest.SHA256, regReq.body.SHA256Hash())
+	p.Logger.Info().Msg(dgst.String())
 	return v1.Descriptor{
 		MediaType: mediaType,
-		Digest:    digest.NewDigest(digest.SHA256, regReq.body.SHA256Hash()),
+		Digest:    dgst,
 		Size:      regReq.body.N(),
 	}, nil
 }

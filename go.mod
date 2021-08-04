@@ -2,7 +2,7 @@ module github.com/aviral26/acr-checkhealth
 
 go 1.15
 
-replace github.com/opencontainers/artifacts => github.com/aviral26/artifacts v0.0.3
+replace github.com/opencontainers/artifacts => github.com/aviral26/artifacts v0.0.4
 
 require (
 	github.com/opencontainers/artifacts v0.0.0-00010101000000-000000000000
