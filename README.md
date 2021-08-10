@@ -83,19 +83,22 @@ aviral@Azure:~$ acr check-health -u avtakkareus2euap -p *** -d avtakkareus2euap.
 
 ### Check Referrers
 
-This will push a small OCI image, and an artifact that [references](https://github.com/opencontainers/artifacts/pull/29) it. The artifact is then pulled, followed by its subject.
+This will push a small OCI image, and an artifact that [references](https://github.com/opencontainers/artifacts/pull/29) it. The artifact is then discovered using the [/referrers API](https://gist.github.com/aviral26/ca4b0c1989fd978e74be75cbf3f3ea92), then pulled followed by its subject.
 
 ```shell
 aviral@Azure:~$ acr check-referrers -u avtakkareus2euap -p *** -d avtakkareus2euap.eastus2euap.data.azurecr.io avtakkareus2euap.azurecr.io
 10:18AM INF DNS:  avtakkareus2euap.azurecr.io -> r0927cnre-2-az.eastus2euap.cloudapp.azure.com. -> 20.39.15.131
 10:18AM INF DNS:  avtakkareus2euap.eastus2euap.data.azurecr.io -> d0929cnre.eastus2euap.cloudapp.azure.com. -> 40.89.120.6
-3:32AM INF pinging frontend
-3:32AM INF pinging data proxy
-3:32AM INF ping was successful
-3:32AM INF push OCI image acrcheckhealth1624530753:1624530753
-3:32AM INF push OCI artifact acrcheckhealth1624530753:1624530753-art-1624530753
-3:32AM INF pull OCI artifact acrcheckhealth1624530753:1624530753-art-1624530753
-3:32AM INF subject for artifact acrcheckhealth1624530753:1624530753-art-1624530753 was pushed as acrcheckhealth1624530753:1624530753
-3:32AM INF pull OCI image acrcheckhealth1624530753:1624530753
-3:32AM INF check-referrers was successful
+10:18AM INF pinging frontend
+10:18AM INF pinging data proxy
+10:18AM INF ping was successful
+10:18AM INF push OCI image acrcheckhealth1628602158:1628602158
+10:18AM INF sha256:139d24c06e66f0f13460b56c0bb883b7cd6784143963342db78a0fb75953b2e7
+10:18AM INF push ORAS artifact acrcheckhealth1628602158:1628602158-art-1628602158
+10:18AM INF sha256:217165219e2445fddcb3fbd79221a78f3176e4453b2a56c0a6aa3494b5c936c4
+10:18AM INF discover referrers for acrcheckhealth1628602158@sha256:139d24c06e66f0f13460b56c0bb883b7cd6784143963342db78a0fb75953b2e7
+10:18AM INF pull ORAS artifact acrcheckhealth1628602158:1628602158-art-1628602158
+10:18AM INF subject for artifact acrcheckhealth1628602158:1628602158-art-1628602158 was pushed as acrcheckhealth1628602158:1628602158
+10:18AM INF pull OCI image acrcheckhealth1628602158:1628602158
+10:18AM INF check-referrers was successful
 ```
