@@ -11,7 +11,6 @@ import (
 
 	rhttp "github.com/aviral26/acr-checkhealth/pkg/http"
 	"github.com/aviral26/acr-checkhealth/pkg/io"
-	v2specs "github.com/opencontainers/artifacts/specs-go"
 	v2 "github.com/opencontainers/artifacts/specs-go/v2"
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
@@ -185,7 +184,6 @@ func (p Proxy) CheckReferrers() error {
 	}
 
 	artifact := v2.Artifact{
-		Versioned: v2specs.Versioned{SchemaVersion: 3},
 		Blobs: []v2.Descriptor{
 			{
 				MediaType: layerDesc.MediaType,
@@ -207,7 +205,7 @@ func (p Proxy) CheckReferrers() error {
 		return err
 	}
 
-	p.Logger.Info().Msg(fmt.Sprintf("push OCI artifact %v:%v", repo, artifactTag))
+	p.Logger.Info().Msg(fmt.Sprintf("push ORAS artifact %v:%v", repo, artifactTag))
 
 	// Push artifact
 	artifactDesc, err := p.v2PushManifest(repo, artifactTag, artifact.MediaType, artifactBytes)
@@ -215,7 +213,7 @@ func (p Proxy) CheckReferrers() error {
 		return err
 	}
 
-	p.Logger.Info().Msg(fmt.Sprintf("pull OCI artifact %v:%v", repo, artifactTag))
+	p.Logger.Info().Msg(fmt.Sprintf("pull ORAS artifact %v:%v", repo, artifactTag))
 
 	// Pull artifact manifest
 	pulledArtifactBytes, err := p.v2PullManifest(repo, artifactTag, artifactDesc)
@@ -399,7 +397,6 @@ func (p Proxy) v2PullManifest(repo, tag string, desc v1.Descriptor) ([]byte, err
 }
 
 // v2PullBlob pulls a blob from the registry and verifies the digest
-// TODO: add size validation
 func (p Proxy) v2PullBlob(repo string, desc v1.Descriptor) error {
 	var nextURL *url.URL
 
@@ -433,6 +430,9 @@ func (p Proxy) v2PullBlob(repo string, desc v1.Descriptor) error {
 		// Validate data integrity
 		if tripInfo.Response.SHA256Sum != desc.Digest {
 			return fmt.Errorf("blob digest mismatch; expected: %v, got: %v", desc.Digest, tripInfo.Response.SHA256Sum)
+		}
+		if tripInfo.Response.Size != desc.Size {
+			return fmt.Errorf("blob size mismatch; expected: %v, got: %v", desc.Size, tripInfo.Response.Size)
 		}
 	}
 
@@ -523,7 +523,7 @@ func (p Proxy) roundTrip(regReq registryRequest, expected int, at authType) (tri
 		return result, err
 	}
 	if result.Response.Code != expected {
-		return result, fmt.Errorf("invalid response code, expected: %v, got: %v", expected, result.Response.Code)
+		return result, fmt.Errorf("invalid response code, expected: %v, got: %v, %s", expected, result.Response.Code, result.Response.Body)
 	}
 
 	return result, nil
