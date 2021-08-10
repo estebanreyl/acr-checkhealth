@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,6 +32,9 @@ const (
 
 	// Manifest routes
 	routeManifest = "/v2/%s/manifests/%s" // add repo name and digest/tag
+
+	// Referrer routes
+	routeReferrers = "/oras/artifacts/v1/%s/manifests/%s/referrers" // add repo name and digest
 )
 
 // Constants for generated data.
@@ -48,6 +52,35 @@ var (
 		Author: checkHealthAuthor,
 	}
 )
+
+// referrer describes a single object in a /referrers API response.
+// See: https://gist.github.com/aviral26/ca4b0c1989fd978e74be75cbf3f3ea92
+type referrer struct {
+	// MediaType is the media type of the targeted content.
+	MediaType string `json:"mediaType"`
+
+	// Digest is the digest of the targeted content.
+	Digest string `json:"digest"`
+
+	// Size is the size of the targeted content.
+	Size int64 `json:"size"`
+
+	// Data is the base64 encoded bytes of the targeted content.
+	Data string `json:"data"`
+}
+
+// referrersResponse describes the referrers API response.
+// See: https://gist.github.com/aviral26/ca4b0c1989fd978e74be75cbf3f3ea92
+type referrersResponse struct {
+	// Digest is the digest of the subject.
+	Digest string `json:"digest"`
+
+	// NextToken is a continuation token.
+	NextToken string `json:"nextToken"`
+
+	// Referrers is a collection of referrers.
+	Referrers []referrer `json:"referrers"`
+}
 
 // Options configures the proxy.
 type Options struct {
@@ -213,6 +246,28 @@ func (p Proxy) CheckReferrers() error {
 		return err
 	}
 
+	p.Logger.Info().Msg(fmt.Sprintf("discover referrers for %v@%v", repo, imageDesc.Digest))
+
+	// Discover referrers
+	referrers, err := p.getReferrers(repo, imageDesc.Digest)
+	if err != nil {
+		return err
+	}
+
+	if len(referrers) != 1 {
+		return fmt.Errorf("unexpected referrers count, expected: %v, got: %v", 1, len(referrers))
+	}
+
+	if !(referrers[0].Digest == string(artifactDesc.Digest) &&
+		referrers[0].Size == artifactDesc.Size &&
+		referrers[0].MediaType == artifactDesc.MediaType) {
+		return fmt.Errorf("unexpected referrer discovered, expected: %v, got: %v", artifactDesc, referrers[0])
+	}
+
+	if referrers[0].Data != base64.StdEncoding.EncodeToString(artifactBytes) {
+		return fmt.Errorf("discovered referrer's 'data' does not match")
+	}
+
 	p.Logger.Info().Msg(fmt.Sprintf("pull ORAS artifact %v:%v", repo, artifactTag))
 
 	// Pull artifact manifest
@@ -342,6 +397,34 @@ func (p Proxy) pushOCIImage(repo, tag string) (v1.Descriptor, error) {
 
 	// Push manifest
 	return p.v2PushManifest(repo, tag, v1.MediaTypeImageManifest, manifestBytes)
+}
+
+// getReferrers discovers referrers of the given subject using the referrers API.
+// See: https://gist.github.com/aviral26/ca4b0c1989fd978e74be75cbf3f3ea92
+func (p Proxy) getReferrers(repo string, subject digest.Digest) ([]referrer, error) {
+	referrersUrl := p.url(p.LoginServer, fmt.Sprintf(routeReferrers, repo, string(subject)))
+
+	regReq := registryRequest{
+		method: http.MethodGet,
+		url:    referrersUrl,
+	}
+
+	tripInfo, err := p.roundTrip(regReq, http.StatusOK, p.auth())
+	if err != nil {
+		return nil, err
+	}
+
+	var resp referrersResponse
+	err = json.Unmarshal(tripInfo.Body, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.NextToken != "" {
+		return nil, errors.New("nextToken found in response, but it's not supported at this time")
+	}
+
+	return resp.Referrers, nil
 }
 
 // v2PushManifest pushes the data to repo with the given tag and media type, returning the digest and size
