@@ -76,7 +76,7 @@ type referrersResponse struct {
 	Digest string `json:"digest"`
 
 	// NextToken is a continuation token.
-	NextToken string `json:"nextToken"`
+	NextToken string `json:"@nextToken"`
 
 	// Referrers is a collection of referrers.
 	Referrers []referrer `json:"referrers"`
@@ -197,7 +197,7 @@ func (p Proxy) CheckHealth() error {
 }
 
 // CheckReferrers checks the registry's referrer APIs.
-func (p Proxy) CheckReferrers() error {
+func (p Proxy) CheckReferrers(count int) error {
 	var (
 		repo        = fmt.Sprintf("%v%v", checkHealthRepoPrefix, time.Now().Unix())
 		imageTag    = fmt.Sprintf("%v", time.Now().Unix())
@@ -210,94 +210,21 @@ func (p Proxy) CheckReferrers() error {
 		return err
 	}
 
-	// Push artifact layer
-	layerDesc, err := p.v2PushBlob(repo, io.NewReader(strings.NewReader(fmt.Sprintf(checkHealthLayerFmt, time.Now()))))
+	pushedReferrers, err := p.pushReferrers(repo, imageDesc, count)
 	if err != nil {
 		return err
 	}
 
-	artifact := v2.Artifact{
-		Blobs: []v2.Descriptor{
-			{
-				MediaType: layerDesc.MediaType,
-				Digest:    layerDesc.Digest,
-				Size:      layerDesc.Size,
-			},
-		},
-		MediaType:    v2.MediaTypeArtifactManifest,
-		ArtifactType: checkHealthArtifactType,
-		SubjectManifest: v2.Descriptor{
-			MediaType: imageDesc.MediaType,
-			Digest:    imageDesc.Digest,
-			Size:      imageDesc.Size,
-		},
-	}
-
-	artifactBytes, err := json.Marshal(artifact)
+	// Discover and verify referrers
+	err = p.verifyReferrers(repo, imageDesc, pushedReferrers)
 	if err != nil {
-		return err
-	}
-
-	p.Logger.Info().Msg(fmt.Sprintf("push ORAS artifact %v:%v", repo, artifactTag))
-
-	// Push artifact
-	artifactDesc, err := p.v2PushManifest(repo, artifactTag, artifact.MediaType, artifactBytes)
-	if err != nil {
-		return err
-	}
-
-	p.Logger.Info().Msg(fmt.Sprintf("discover referrers for %v@%v", repo, imageDesc.Digest))
-
-	// Discover referrers
-	referrers, err := p.getReferrers(repo, imageDesc.Digest)
-	if err != nil {
-		return err
-	}
-
-	if len(referrers) != 1 {
-		return fmt.Errorf("unexpected referrers count, expected: %v, got: %v", 1, len(referrers))
-	}
-
-	if !(referrers[0].Digest == string(artifactDesc.Digest) &&
-		referrers[0].Size == artifactDesc.Size &&
-		referrers[0].MediaType == artifactDesc.MediaType) {
-		return fmt.Errorf("unexpected referrer discovered, expected: %v, got: %v", artifactDesc, referrers[0])
-	}
-
-	if referrers[0].Data != base64.StdEncoding.EncodeToString(artifactBytes) {
-		return fmt.Errorf("discovered referrer's 'data' does not match")
-	}
-
-	p.Logger.Info().Msg(fmt.Sprintf("pull ORAS artifact %v:%v", repo, artifactTag))
-
-	// Pull artifact manifest
-	pulledArtifactBytes, err := p.v2PullManifest(repo, artifactTag, artifactDesc)
-	if err != nil {
-		return err
-	}
-
-	pulledArtifact := &v2.Artifact{}
-	if err = json.Unmarshal(pulledArtifactBytes, pulledArtifact); err != nil {
-		return err
-	}
-
-	// Pull artifact layer
-	if err = p.v2PullBlob(repo, v1.Descriptor{
-		MediaType: pulledArtifact.Blobs[0].MediaType,
-		Digest:    pulledArtifact.Blobs[0].Digest,
-		Size:      pulledArtifact.Blobs[0].Size,
-	}); err != nil {
 		return err
 	}
 
 	p.Logger.Info().Msg(fmt.Sprintf("subject for artifact %v:%v was pushed as %v:%v", repo, artifactTag, repo, imageTag))
 
 	// Pull subject image
-	err = p.pullOCIImage(repo, imageTag, v1.Descriptor{
-		MediaType: pulledArtifact.SubjectManifest.MediaType,
-		Digest:    pulledArtifact.SubjectManifest.Digest,
-		Size:      pulledArtifact.SubjectManifest.Size,
-	})
+	err = p.pullOCIImage(repo, imageTag, imageDesc)
 	if err != nil {
 		return err
 	}
@@ -324,6 +251,125 @@ func (p Proxy) auth() authType {
 	default:
 		return bearerAuth
 	}
+}
+
+func (p Proxy) pushReferrers(repo string, subject v1.Descriptor, count int) ([]referrer, error) {
+	if count < 1 || count > 100 {
+		p.Logger.Warn().Msg("max referrers limited to 100")
+		count = 100
+	}
+
+	var referrers []referrer
+
+	for i := 0; i < count; i++ {
+		// Push artifact layer
+		layerDesc, err := p.v2PushBlob(repo, io.NewReader(strings.NewReader(fmt.Sprintf(checkHealthLayerFmt+"  ~ %v", time.Now(), i))))
+		if err != nil {
+			return nil, err
+		}
+
+		artifact := v2.Artifact{
+			Blobs: []v2.Descriptor{
+				{
+					MediaType: layerDesc.MediaType,
+					Digest:    layerDesc.Digest,
+					Size:      layerDesc.Size,
+				},
+			},
+			MediaType:    v2.MediaTypeArtifactManifest,
+			ArtifactType: checkHealthArtifactType,
+			SubjectManifest: v2.Descriptor{
+				MediaType: subject.MediaType,
+				Digest:    subject.Digest,
+				Size:      subject.Size,
+			},
+		}
+
+		artifactBytes, err := json.Marshal(artifact)
+		if err != nil {
+			return nil, err
+		}
+
+		artifactTag := fmt.Sprintf("art-%v-%v", i+1, time.Now().Unix())
+		p.Logger.Info().Msg(fmt.Sprintf("push ORAS artifact %v:%v", repo, artifactTag))
+
+		// Push artifact
+		artifactDesc, err := p.v2PushManifest(repo, artifactTag, artifact.MediaType, artifactBytes)
+		if err != nil {
+			return nil, err
+		}
+
+		referrers = append(referrers, referrer{MediaType: artifactDesc.MediaType, Digest: artifactDesc.Digest.String(), Size: artifactDesc.Size, Data: base64.StdEncoding.EncodeToString(artifactBytes)})
+	}
+
+	return referrers, nil
+}
+
+// verifyReferrers verifies that the given subject has the expectedReferrers in the registry.
+func (p Proxy) verifyReferrers(repo string, subject v1.Descriptor, expectedReferrers []referrer) error {
+	p.Logger.Info().Msg(fmt.Sprintf("discover referrers for %v@%v", repo, subject.Digest))
+
+	// Discover all referrers
+	discoveredReferrers, err := p.getReferrers(repo, subject.Digest)
+	if err != nil {
+		return err
+	}
+
+	if len(discoveredReferrers) != len(expectedReferrers) {
+		return fmt.Errorf("unexpected referrers count, expected: %v, got: %v", len(expectedReferrers), len(discoveredReferrers))
+	}
+
+	matchedReferrers := make(map[string]string)
+
+	for _, gotReferrer := range discoveredReferrers {
+		for _, expectedReferrer := range expectedReferrers {
+			if gotReferrer.Digest == expectedReferrer.Digest &&
+				gotReferrer.Size == expectedReferrer.Size &&
+				gotReferrer.MediaType == expectedReferrer.MediaType &&
+				gotReferrer.Data == expectedReferrer.Data {
+
+				// Verify this is a unique digest
+				if _, ok := matchedReferrers[gotReferrer.Digest]; ok {
+					return errors.New("duplicate referrer result detected")
+				}
+
+				// Successfully discovered
+				p.Logger.Info().Msg(gotReferrer.Digest)
+				matchedReferrers[gotReferrer.Digest] = ""
+			}
+		}
+	}
+
+	if len(matchedReferrers) != len(expectedReferrers) {
+		return errors.New("not all referrers matched")
+	}
+
+	for _, gotReferrer := range discoveredReferrers {
+		p.Logger.Info().Msg(fmt.Sprintf("pull referrer %v@%v", repo, gotReferrer.Digest))
+
+		// Pull artifact manifest
+		pulledArtifactBytes, err := p.v2PullManifest(repo, gotReferrer.Digest,
+			v1.Descriptor{MediaType: gotReferrer.MediaType, Digest: digest.Digest(gotReferrer.Digest), Size: gotReferrer.Size})
+		if err != nil {
+			return err
+		}
+
+		pulledArtifact := &v2.Artifact{}
+		if err = json.Unmarshal(pulledArtifactBytes, pulledArtifact); err != nil {
+			return err
+		}
+
+		// Pull artifact layer
+		if err = p.v2PullBlob(repo, v1.Descriptor{
+			MediaType: pulledArtifact.Blobs[0].MediaType,
+			Digest:    pulledArtifact.Blobs[0].Digest,
+			Size:      pulledArtifact.Blobs[0].Size,
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // pullOCIImage pulls the image from repo by tag and validates against the given descriptor.
@@ -404,27 +450,45 @@ func (p Proxy) pushOCIImage(repo, tag string) (v1.Descriptor, error) {
 func (p Proxy) getReferrers(repo string, subject digest.Digest) ([]referrer, error) {
 	referrersUrl := p.url(p.LoginServer, fmt.Sprintf(routeReferrers, repo, string(subject)))
 
-	regReq := registryRequest{
-		method: http.MethodGet,
-		url:    referrersUrl,
+	var (
+		nextToken string
+		referrers []referrer
+		page      int
+	)
+
+	for {
+		regReq := registryRequest{
+			method: http.MethodGet,
+			url:    fmt.Sprintf("%v?nextToken=%v", referrersUrl, nextToken),
+		}
+
+		page += 1
+
+		p.Logger.Info().Msg(fmt.Sprintf("enumerating referrers page %v, nextToken: %v", page, nextToken))
+
+		tripInfo, err := p.roundTrip(regReq, http.StatusOK, p.auth())
+		if err != nil {
+			return nil, err
+		}
+
+		var resp referrersResponse
+		err = json.Unmarshal(tripInfo.Body, &resp)
+		if err != nil {
+			return nil, err
+		}
+
+		referrers = append(referrers, resp.Referrers...)
+
+		if resp.NextToken == "" {
+			break
+		}
+
+		nextToken = resp.NextToken
 	}
 
-	tripInfo, err := p.roundTrip(regReq, http.StatusOK, p.auth())
-	if err != nil {
-		return nil, err
-	}
+	p.Logger.Info().Msg(fmt.Sprintf("found %v referrers", len(referrers)))
 
-	var resp referrersResponse
-	err = json.Unmarshal(tripInfo.Body, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.NextToken != "" {
-		return nil, errors.New("nextToken found in response, but it's not supported at this time")
-	}
-
-	return resp.Referrers, nil
+	return referrers, nil
 }
 
 // v2PushManifest pushes the data to repo with the given tag and media type, returning the digest and size
@@ -454,8 +518,8 @@ func (p Proxy) v2PushManifest(repo, tag, mediaType string, manifestBytes []byte)
 }
 
 // v2PullManifest pulls manifest from repo specified by tag or digest and verifies the download size.
-func (p Proxy) v2PullManifest(repo, tag string, desc v1.Descriptor) ([]byte, error) {
-	manifestURL := p.url(p.LoginServer, fmt.Sprintf(routeManifest, repo, tag))
+func (p Proxy) v2PullManifest(repo, tagOrDigest string, desc v1.Descriptor) ([]byte, error) {
+	manifestURL := p.url(p.LoginServer, fmt.Sprintf(routeManifest, repo, tagOrDigest))
 
 	regReq := registryRequest{
 		method: http.MethodGet,
