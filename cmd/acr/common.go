@@ -15,12 +15,12 @@ import (
 
 // Common flag names
 const (
-	insecureStr     = "insecure"
-	basicAuthStr    = "basicauth"
-	userNameStr     = "username"
-	passwordStr     = "password"
-	dataEndpointStr = "dataendpoint"
-	traceStr        = "trace"
+	insecureStr       = "insecure"
+	basicAuthStr      = "basicauth"
+	userNameStr       = "username"
+	passwordStr       = "password"
+	dataEndpointStr   = "dataendpoint"
+	traceStr          = "trace"
 )
 
 // commonFlags is a collection of cli flags common to all commands.
