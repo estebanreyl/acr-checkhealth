@@ -199,9 +199,8 @@ func (p Proxy) CheckHealth() error {
 // CheckReferrers checks the registry's referrer APIs.
 func (p Proxy) CheckReferrers(count int) error {
 	var (
-		repo        = fmt.Sprintf("%v%v", checkHealthRepoPrefix, time.Now().Unix())
-		imageTag    = fmt.Sprintf("%v", time.Now().Unix())
-		artifactTag = fmt.Sprintf("%v-art-%v", imageTag, time.Now().Unix())
+		repo     = fmt.Sprintf("%v%v", checkHealthRepoPrefix, time.Now().Unix())
+		imageTag = fmt.Sprintf("%v", time.Now().Unix())
 	)
 
 	// Push simple image
@@ -221,7 +220,7 @@ func (p Proxy) CheckReferrers(count int) error {
 		return err
 	}
 
-	p.Logger.Info().Msg(fmt.Sprintf("subject for artifact %v:%v was pushed as %v:%v", repo, artifactTag, repo, imageTag))
+	p.Logger.Info().Msg(fmt.Sprintf("subject is %v:%v", repo, imageTag))
 
 	// Pull subject image
 	err = p.pullOCIImage(repo, imageTag, imageDesc)
@@ -254,7 +253,10 @@ func (p Proxy) auth() authType {
 }
 
 func (p Proxy) pushReferrers(repo string, subject v1.Descriptor, count int) ([]referrer, error) {
-	if count < 1 || count > 100 {
+	if count < 1 {
+		p.Logger.Warn().Msg("setting referrers count to 1")
+		count = 1
+	} else if count > 100 {
 		p.Logger.Warn().Msg("max referrers limited to 100")
 		count = 100
 	}
@@ -321,21 +323,22 @@ func (p Proxy) verifyReferrers(repo string, subject v1.Descriptor, expectedRefer
 
 	matchedReferrers := make(map[string]string)
 
-	for _, gotReferrer := range discoveredReferrers {
+	for _, discoveredReferrer := range discoveredReferrers {
 		for _, expectedReferrer := range expectedReferrers {
-			if gotReferrer.Digest == expectedReferrer.Digest &&
-				gotReferrer.Size == expectedReferrer.Size &&
-				gotReferrer.MediaType == expectedReferrer.MediaType &&
-				gotReferrer.Data == expectedReferrer.Data {
+			if discoveredReferrer.Digest == expectedReferrer.Digest &&
+				discoveredReferrer.Size == expectedReferrer.Size &&
+				discoveredReferrer.MediaType == expectedReferrer.MediaType &&
+				discoveredReferrer.Data == expectedReferrer.Data {
 
 				// Verify this is a unique digest
-				if _, ok := matchedReferrers[gotReferrer.Digest]; ok {
+				if _, ok := matchedReferrers[discoveredReferrer.Digest]; ok {
 					return errors.New("duplicate referrer result detected")
 				}
 
 				// Successfully discovered
-				p.Logger.Info().Msg(gotReferrer.Digest)
-				matchedReferrers[gotReferrer.Digest] = ""
+				p.Logger.Info().Msg(discoveredReferrer.Digest)
+				matchedReferrers[discoveredReferrer.Digest] = ""
+				break
 			}
 		}
 	}
@@ -464,7 +467,7 @@ func (p Proxy) getReferrers(repo string, subject digest.Digest) ([]referrer, err
 
 		page += 1
 
-		p.Logger.Info().Msg(fmt.Sprintf("enumerating referrers page %v, nextToken: %v", page, nextToken))
+		p.Logger.Debug().Msg(fmt.Sprintf("enumerating referrers page %v, nextToken: %v", page, nextToken))
 
 		tripInfo, err := p.roundTrip(regReq, http.StatusOK, p.auth())
 		if err != nil {
