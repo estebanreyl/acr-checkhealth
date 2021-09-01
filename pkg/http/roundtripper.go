@@ -20,6 +20,7 @@ const (
 	HeaderAuthorization = "Authorization"
 	HeaderContentType   = "Content-Type"
 	HeaderAccept        = "Accept"
+	HeaderLink          = "Link"
 )
 
 // Request represents a request made to the registry.
@@ -35,6 +36,7 @@ type Response struct {
 	Code            int             `json:"code,omitempty"`
 	HeaderChallenge string          `json:"Www-Authenticate,omitempty"`
 	HeaderLocation  *url.URL        `json:"redirectLocation,omitempty"`
+	HeaderLink      string          `json:"link,omitempty"`
 	Size            int64           `json:"size,omitempty"`
 	SHA256Sum       digest.Digest   `json:"sha256,omitempty"`
 	Body            json.RawMessage `json:"body,omitempty"`
@@ -105,6 +107,7 @@ func (r RoundTripperWithContext) RoundTrip(req *http.Request) (RoundTripInfo, er
 	info.Response = Response{
 		Code:            resp.StatusCode,
 		HeaderChallenge: resp.Header.Get(HeaderChallenge),
+		HeaderLink:      resp.Header.Get(HeaderLink),
 		Size:            bodyReader.N(),
 		SHA256Sum:       digest.NewDigest(digest.SHA256, bodyReader.SHA256Hash()),
 		Body:            bodyBytes,
