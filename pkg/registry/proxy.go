@@ -462,12 +462,12 @@ func (p Proxy) getReferrers(repo string, subject digest.Digest) ([]orasartifact.
 	for {
 		regReq := registryRequest{
 			method: http.MethodGet,
-			url:    fmt.Sprintf("%v", referrersUrl),
+			url:    referrersUrl,
 		}
 
 		page += 1
 
-		p.Logger.Debug().Msg(fmt.Sprintf("enumerating referrers page %v", page))
+		p.Logger.Debug().Msg(fmt.Sprintf("enumerating referrers page %v, %v", page, regReq.url))
 
 		tripInfo, err := p.roundTrip(regReq, http.StatusOK, p.auth())
 		if err != nil {
@@ -486,7 +486,8 @@ func (p Proxy) getReferrers(repo string, subject digest.Digest) ([]orasartifact.
 			break
 		}
 
-		referrersUrl = tripInfo.HeaderLink
+		link := tripInfo.HeaderLink
+		referrersUrl = link[1:strings.Index(link, ">")]
 	}
 
 	p.Logger.Info().Msg(fmt.Sprintf("found %v referrers", len(referrers)))
