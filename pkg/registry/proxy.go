@@ -274,9 +274,8 @@ func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count
 					Size:      layerDesc.Size,
 				},
 			},
-			MediaType:    orasartifact.MediaTypeArtifactManifest,
 			ArtifactType: checkHealthArtifactType,
-			SubjectManifest: orasartifact.Descriptor{
+			Subject: orasartifact.Descriptor{
 				MediaType: subject.MediaType,
 				Digest:    subject.Digest,
 				Size:      subject.Size,
@@ -292,7 +291,7 @@ func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count
 		p.Logger.Info().Msg(fmt.Sprintf("push ORAS artifact %v:%v", repo, artifactTag))
 
 		// Push artifact
-		artifactDesc, err := p.v2PushManifest(repo, artifactTag, artifact.MediaType, artifactBytes)
+		artifactDesc, err := p.v2PushManifest(repo, artifactTag, orasartifact.MediaTypeArtifactManifest, artifactBytes)
 		if err != nil {
 			return nil, err
 		}
