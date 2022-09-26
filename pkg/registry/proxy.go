@@ -260,6 +260,7 @@ func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count
 	var referrers []orasartifact.Descriptor
 
 	for i := 0; i < count; i++ {
+		time.Sleep(time.Second * 4)
 		// Push artifact layer
 		layerDesc, err := p.v2PushBlob(repo, io.NewReader(strings.NewReader(fmt.Sprintf(checkHealthLayerFmt+"  ~ %v", time.Now(), i))))
 		if err != nil {
@@ -280,6 +281,11 @@ func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count
 				Digest:    subject.Digest,
 				Size:      subject.Size,
 			},
+			MediaType: "application/vnd.cncf.oras.artifact.manifest.v1+json",
+		}
+
+		if i%2 == 0 {
+			artifact.Annotations = map[string]string{"io.cncf.oras.artifact.created": time.Now().Format(time.RFC3339)}
 		}
 
 		artifactBytes, err := json.Marshal(artifact)
@@ -288,7 +294,7 @@ func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count
 		}
 
 		artifactTag := fmt.Sprintf("art-%v-%v", i+1, time.Now().Unix())
-		p.Logger.Info().Msg(fmt.Sprintf("push ORAS artifact %v:%v", repo, artifactTag))
+		p.Logger.Info().Msg(fmt.Sprintf("push ORAS artifact %v:%v, createdTime %t", repo, artifactTag, i%2 == 0))
 
 		// Push artifact
 		artifactDesc, err := p.v2PushManifest(repo, artifactTag, orasartifact.MediaTypeArtifactManifest, artifactBytes)

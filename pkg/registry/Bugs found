@@ -1,0 +1,16 @@
+Bugs found:
+400 when mediatype is invalid but message does not note that mediatype is wrong.
+
+oras/artifacts/v1/
+    - Returns 500 error
+      Correlation Id = b7152d04-3412-4ca5-9101-53facc41c2fb
+
+/v2/{repository}/_oras/artifacts/referrers?digest={digest}
+    - Returns 500 error
+      Correlation Id = 2c45e0d4-fa72-47df-b285-f883c4e27c37
+
+Works:
+    - Discover API
+    - Push
+    - Pull
+
