@@ -248,7 +248,7 @@ func (p Proxy) auth() authType {
 	}
 }
 
-func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count int) ([]orasartifact.Descriptor, error) {
+func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count int) ([]ociimagespec.Descriptor, error) {
 	if count < 1 {
 		p.Logger.Warn().Msg("setting referrers count to 1")
 		count = 1
@@ -257,7 +257,7 @@ func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count
 		count = 100
 	}
 
-	var referrers []orasartifact.Descriptor
+	var referrers []ociimagespec.Descriptor
 
 	for i := 0; i < count; i++ {
 		time.Sleep(time.Second * 4)
@@ -267,8 +267,8 @@ func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count
 			return nil, err
 		}
 
-		artifact := orasartifact.Manifest{
-			Blobs: []orasartifact.Descriptor{
+		artifact := ociimagespec.Artifact{
+			Blobs: []ociimagespec.Descriptor{
 				{
 					MediaType: layerDesc.MediaType,
 					Digest:    layerDesc.Digest,
@@ -276,12 +276,12 @@ func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count
 				},
 			},
 			ArtifactType: checkHealthArtifactType,
-			Subject: orasartifact.Descriptor{
+			Subject: &ociimagespec.Descriptor{
 				MediaType: subject.MediaType,
 				Digest:    subject.Digest,
 				Size:      subject.Size,
 			},
-			MediaType: "application/vnd.cncf.oras.artifact.manifest.v1+json",
+			MediaType: ociimagespec.MediaTypeArtifactManifest,
 		}
 
 		if i%2 == 0 {
@@ -294,15 +294,15 @@ func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count
 		}
 
 		artifactTag := fmt.Sprintf("art-%v-%v", i+1, time.Now().Unix())
-		p.Logger.Info().Msg(fmt.Sprintf("push ORAS artifact %v:%v, createdTime %t", repo, artifactTag, i%2 == 0))
+		p.Logger.Info().Msg(fmt.Sprintf("push OCI artifact %v:%v, createdTime %t", repo, artifactTag, i%2 == 0))
 
 		// Push artifact
-		artifactDesc, err := p.v2PushManifest(repo, artifactTag, orasartifact.MediaTypeArtifactManifest, artifactBytes)
+		artifactDesc, err := p.v2PushManifest(repo, artifactTag, ociimagespec.MediaTypeArtifactManifest, artifactBytes)
 		if err != nil {
 			return nil, err
 		}
 
-		referrers = append(referrers, orasartifact.Descriptor{
+		referrers = append(referrers, ociimagespec.Descriptor{
 			MediaType:    artifactDesc.MediaType,
 			Digest:       artifactDesc.Digest,
 			Size:         artifactDesc.Size,
@@ -313,7 +313,7 @@ func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count
 }
 
 // verifyReferrers verifies that the given subject has the expectedReferrers in the registry.
-func (p Proxy) verifyReferrers(repo string, subject ociimagespec.Descriptor, expectedReferrers []orasartifact.Descriptor) error {
+func (p Proxy) verifyReferrers(repo string, subject ociimagespec.Descriptor, expectedReferrers []ociimagespec.Descriptor) error {
 	p.Logger.Info().Msg(fmt.Sprintf("discover referrers for %v@%v", repo, subject.Digest))
 
 	// Discover all referrers
