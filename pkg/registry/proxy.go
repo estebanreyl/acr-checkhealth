@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
@@ -229,6 +230,50 @@ func (p Proxy) CheckReferrers(count int) error {
 	return nil
 }
 
+// CheckReferrers checks the registry's referrer APIs.
+func (p Proxy) CheckReferrersOutOfOrder(count int) error {
+	var (
+		repo     = fmt.Sprintf("%v%v", checkHealthRepoPrefix, time.Now().Unix())
+		imageTag = fmt.Sprintf("%v", time.Now().Unix())
+	)
+	p.Logger.Info().Msg(fmt.Sprint("Push OCI subject layers"))
+	digest, _, _, mediaType, data, err := p.createOCIImage(repo, imageTag)
+	if err != nil {
+		return err
+	}
+
+	// Push simple image
+	imageDesc := ociimagespec.Descriptor{
+		Digest:    digest,
+		MediaType: mediaType,
+		Size:      int64(len(data)),
+	}
+
+	pushedReferrers, err := p.pushReferrers(repo, imageDesc, count)
+	if err != nil {
+		return err
+	}
+
+	// Push subject after the referrers
+	p.Logger.Info().Msg(fmt.Sprintf("Push OCI subject: %v:%v  Digest %v", repo, imageTag, digest.String()))
+	p.v2PushManifest(repo, imageTag, ociimagespec.MediaTypeImageManifest, data)
+
+	// Discover and verify referrers
+	err = p.verifyReferrers(repo, imageDesc, pushedReferrers)
+	if err != nil {
+		return err
+	}
+	// Pull subject image
+	err = p.pullOCIImage(repo, imageTag, imageDesc)
+	if err != nil {
+		return err
+	}
+
+	p.Logger.Info().Msg("check-referrers was successful")
+
+	return nil
+}
+
 // scheme determines the HTTP scheme of the request url.
 func (p Proxy) url(hostname, route string) string {
 	scheme := "https"
@@ -285,7 +330,7 @@ func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count
 		}
 
 		if i%2 == 0 {
-			artifact.Annotations = map[string]string{"io.cncf.oras.artifact.created": time.Now().Format(time.RFC3339)}
+			artifact.Annotations = map[string]string{ociimagespec.AnnotationArtifactCreated: time.Now().Format(time.RFC3339)}
 		}
 
 		artifactBytes, err := json.Marshal(artifact)
@@ -310,6 +355,51 @@ func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count
 	}
 
 	return referrers, nil
+}
+
+func (p Proxy) createOCIImage(repo, tag string) (digest.Digest, string, string, string, []byte, error) {
+	configBytes, err := json.Marshal(ociConfig)
+	if err != nil {
+		return "", "", "", "", nil, err
+	}
+
+	// Upload config blob
+	configDesc, err := p.v2PushBlob(repo, io.NewReader(strings.NewReader(string(configBytes))))
+	if err != nil {
+		return "", "", "", "", nil, err
+	}
+
+	// Upload a layer
+	layerDesc, err := p.v2PushBlob(repo, io.NewReader(strings.NewReader(fmt.Sprintf(checkHealthLayerFmt, time.Now()))))
+	if err != nil {
+		return "", "", "", "", nil, err
+	}
+
+	ociManifest := ociimagespec.Manifest{
+		Versioned: specs.Versioned{SchemaVersion: 2},
+		Config: ociimagespec.Descriptor{
+			MediaType: checkHealthMediaType,
+			Digest:    configDesc.Digest,
+			Size:      configDesc.Size,
+		},
+		Layers: []ociimagespec.Descriptor{
+			{
+				MediaType: checkHealthMediaType,
+				Digest:    layerDesc.Digest,
+				Size:      layerDesc.Size,
+			},
+		},
+	}
+
+	manifestBytes, err := json.Marshal(ociManifest)
+	if err != nil {
+		return "", "", "", "", nil, err
+	}
+
+	body := io.NewReader(strings.NewReader(string(manifestBytes)))
+	ioutil.ReadAll(body)
+	dgst := digest.NewDigest(digest.SHA256, body.SHA256Hash())
+	return dgst, repo, tag, ociimagespec.MediaTypeImageManifest, manifestBytes, nil
 }
 
 // verifyReferrers verifies that the given subject has the expectedReferrers in the registry.

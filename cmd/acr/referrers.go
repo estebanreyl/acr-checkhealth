@@ -40,5 +40,10 @@ func runCheckReferrers(ctx *cli.Context) (err error) {
 		return err
 	}
 
+	err = proxy.CheckReferrersOutOfOrder(ctx.Int(referrersCountStr))
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
