@@ -1,9 +1,16 @@
 package main
 
-import "github.com/urfave/cli/v2"
+import (
+	"fmt"
+
+	"github.com/urfave/cli/v2"
+)
 
 const (
-	referrersCountStr = "referrers"
+	referrersCountStr    = "referrers"
+	OciReferrers         = "Referrers_OCI_V1"
+	OciManifestReferrers = "Referrers_OCI_Manifest"
+	OrasReferrers        = "Referrers_ORAS_V1"
 )
 
 var (
@@ -35,14 +42,21 @@ func runCheckReferrers(ctx *cli.Context) (err error) {
 		return err
 	}
 
-	err = proxy.CheckReferrers(ctx.Int(referrersCountStr))
-	if err != nil {
-		return err
-	}
+	for _, version := range []string{OrasReferrers, OciManifestReferrers, OciReferrers} {
+		fmt.Printf("------------------------%s-------------------------\n", version)
+		fmt.Print("----ORDERED----\n")
 
-	err = proxy.CheckReferrersOutOfOrder(ctx.Int(referrersCountStr))
-	if err != nil {
-		return err
+		err = proxy.CheckReferrers(ctx.Int(referrersCountStr), version)
+		if err != nil {
+			fmt.Print(err)
+		}
+
+		fmt.Print("----OUT OF ORDER----\n")
+		err = proxy.CheckReferrersOutOfOrder(ctx.Int(referrersCountStr), version)
+		if err != nil {
+			fmt.Print(err)
+		}
+
 	}
 
 	return nil

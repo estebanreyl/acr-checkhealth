@@ -34,8 +34,14 @@ const (
 	routeManifest = "/v2/%s/manifests/%s" // add repo name and digest/tag
 
 	// Referrer routes
-	// routeReferrers = "/oras/artifacts/v1/%s/manifests/%s/referrers" // add repo name and digest
-	routeReferrers = "/v2/%s/referrers/%s" // add repo name and digest
+	// ocirouteReferrers = "/oras/artifacts/v1/%s/manifests/%s/referrers" // add repo name and digest
+	ocirouteReferrers  = "/v2/%s/referrers/%s"                          // add repo name and digest
+	orasrouteReferrers = "/oras/artifacts/v1/%s/manifests/%s/referrers" // add repo name and digest
+
+	// API Versions
+	OciReferrers         = "Referrers_OCI_V1"
+	OciManifestReferrers = "Referrers_OCI_Manifest"
+	OrasReferrers        = "Referrers_ORAS_V1"
 )
 
 // Constants for generated data.
@@ -53,25 +59,6 @@ var (
 		Author: checkHealthAuthor,
 	}
 )
-
-// referrer describes a single object in a /referrers API response.
-// See: https://gist.github.com/aviral26/ca4b0c1989fd978e74be75cbf3f3ea92
-// type referrer struct {
-// 	// MediaType is the media type of the targeted content.
-// 	MediaType string `json:"mediaType"`
-
-// 	// Digest is the digest of the targeted content.
-// 	Digest string `json:"digest"`
-
-// 	// Size is the size of the targeted content.
-// 	Size int64 `json:"size"`
-
-// 	// ArtifactType is the artifact type of the targeted content.
-// 	ArtifactType string `json:"artifactType"`
-
-// 	// Data is the base64 encoded bytes of the targeted content.
-// 	Data string `json:"data,omitempty"`
-// }
 
 // referrersResponse describes the referrers API response.
 // See: https://gist.github.com/aviral26/ca4b0c1989fd978e74be75cbf3f3ea92
@@ -195,7 +182,7 @@ func (p Proxy) CheckHealth() error {
 }
 
 // CheckReferrers checks the registry's referrer APIs.
-func (p Proxy) CheckReferrers(count int) error {
+func (p Proxy) CheckReferrers(count int, referrersVersion string) error {
 	var (
 		repo     = fmt.Sprintf("%v%v", checkHealthRepoPrefix, time.Now().Unix())
 		imageTag = fmt.Sprintf("%v", time.Now().Unix())
@@ -207,13 +194,13 @@ func (p Proxy) CheckReferrers(count int) error {
 		return err
 	}
 
-	pushedReferrers, err := p.pushReferrers(repo, imageDesc, count)
+	pushedReferrers, err := p.pushReferrers(repo, imageDesc, count, referrersVersion)
 	if err != nil {
 		return err
 	}
 
 	// Discover and verify referrers
-	err = p.verifyReferrers(repo, imageDesc, pushedReferrers)
+	err = p.verifyReferrers(repo, imageDesc, pushedReferrers, referrersVersion)
 	if err != nil {
 		return err
 	}
@@ -232,7 +219,7 @@ func (p Proxy) CheckReferrers(count int) error {
 }
 
 // CheckReferrers checks the registry's referrer APIs.
-func (p Proxy) CheckReferrersOutOfOrder(count int) error {
+func (p Proxy) CheckReferrersOutOfOrder(count int, referrersVersion string) error {
 	var (
 		repo     = fmt.Sprintf("%v%v", checkHealthRepoPrefix, time.Now().Unix())
 		imageTag = fmt.Sprintf("%v", time.Now().Unix())
@@ -250,7 +237,7 @@ func (p Proxy) CheckReferrersOutOfOrder(count int) error {
 		Size:      int64(len(data)),
 	}
 
-	pushedReferrers, err := p.pushReferrers(repo, imageDesc, count)
+	pushedReferrers, err := p.pushReferrers(repo, imageDesc, count, referrersVersion)
 	if err != nil {
 		return err
 	}
@@ -260,7 +247,7 @@ func (p Proxy) CheckReferrersOutOfOrder(count int) error {
 	p.v2PushManifest(repo, imageTag, ociimagespec.MediaTypeImageManifest, data)
 
 	// Discover and verify referrers
-	err = p.verifyReferrers(repo, imageDesc, pushedReferrers)
+	err = p.verifyReferrers(repo, imageDesc, pushedReferrers, referrersVersion)
 	if err != nil {
 		return err
 	}
@@ -294,7 +281,7 @@ func (p Proxy) auth() authType {
 	}
 }
 
-func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count int) ([]ociimagespec.Descriptor, error) {
+func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count int, referrersVersion string) ([]ociimagespec.Descriptor, error) {
 	if count < 1 {
 		p.Logger.Warn().Msg("setting referrers count to 1")
 		count = 1
@@ -312,29 +299,45 @@ func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count
 		if err != nil {
 			return nil, err
 		}
-
-		artifact := ociimagespec.Artifact{
-			Blobs: []ociimagespec.Descriptor{
-				{
-					MediaType: layerDesc.MediaType,
-					Digest:    layerDesc.Digest,
-					Size:      layerDesc.Size,
-				},
-			},
-			ArtifactType: checkHealthArtifactType,
-			Subject: &ociimagespec.Descriptor{
-				MediaType: subject.MediaType,
-				Digest:    subject.Digest,
-				Size:      subject.Size,
-			},
-			MediaType: ociimagespec.MediaTypeArtifactManifest,
-		}
-
+		mediaType := ""
+		var artifactBytes []byte
+		var annotations map[string]string
 		if i%2 == 0 {
-			artifact.Annotations = map[string]string{ociimagespec.AnnotationArtifactCreated: time.Now().Format(time.RFC3339)}
+			now := time.Now().Format(time.RFC3339)
+			annotations = map[string]string{
+				ociimagespec.AnnotationArtifactCreated: now,
+				"io.cncf.oras.artifact.created":        now,
+			}
 		}
 
-		artifactBytes, err := json.Marshal(artifact)
+		if referrersVersion == OciReferrers {
+			artifactBytes, err = p.createOCIArtifactReferrer(annotations, subject, layerDesc)
+			mediaType = ociimagespec.MediaTypeArtifactManifest
+		}
+
+		if referrersVersion == OciManifestReferrers {
+
+			configBytes, err := json.Marshal(ociConfig)
+			if err != nil {
+				return nil, err
+			}
+
+			// Upload config blob
+			configDesc, err := p.v2PushBlob(repo, io.NewReader(strings.NewReader(string(configBytes))))
+			if err != nil {
+				return nil, err
+			}
+
+			artifactBytes, err = p.createOCIManifestReferrer(annotations, subject, layerDesc, configDesc)
+			mediaType = ociimagespec.MediaTypeImageManifest
+		}
+
+		if referrersVersion == OrasReferrers {
+			var annotations map[string]string
+			artifactBytes, err = p.createORASArtifactReferrer(annotations, subject, layerDesc)
+			mediaType = orasartifact.MediaTypeArtifactManifest
+		}
+
 		if err != nil {
 			return nil, err
 		}
@@ -343,7 +346,7 @@ func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count
 		p.Logger.Info().Msg(fmt.Sprintf("push OCI artifact %v:%v, createdTime %t", repo, artifactTag, i%2 == 0))
 
 		// Push artifact
-		artifactDesc, err := p.v2PushManifest(repo, artifactTag, ociimagespec.MediaTypeArtifactManifest, artifactBytes)
+		artifactDesc, err := p.v2PushManifest(repo, artifactTag, mediaType, artifactBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -352,10 +355,98 @@ func (p Proxy) pushReferrers(repo string, subject ociimagespec.Descriptor, count
 			MediaType:    artifactDesc.MediaType,
 			Digest:       artifactDesc.Digest,
 			Size:         artifactDesc.Size,
-			ArtifactType: artifact.ArtifactType}) // Data: base64.StdEncoding.EncodeToString(artifactBytes)})
+			ArtifactType: checkHealthArtifactType}) // Data: base64.StdEncoding.EncodeToString(artifactBytes)})
 	}
 
 	return referrers, nil
+}
+
+func (p Proxy) createOCIArtifactReferrer(annotations map[string]string, subject ociimagespec.Descriptor, layerDesc ociimagespec.Descriptor) ([]byte, error) {
+
+	artifact := ociimagespec.Artifact{
+		Blobs: []ociimagespec.Descriptor{
+			{
+				MediaType: layerDesc.MediaType,
+				Digest:    layerDesc.Digest,
+				Size:      layerDesc.Size,
+			},
+		},
+		ArtifactType: checkHealthArtifactType,
+		Subject: &ociimagespec.Descriptor{
+			MediaType: subject.MediaType,
+			Digest:    subject.Digest,
+			Size:      subject.Size,
+		},
+		MediaType:   ociimagespec.MediaTypeArtifactManifest,
+		Annotations: annotations,
+	}
+
+	artifactBytes, err := json.Marshal(artifact)
+	if err != nil {
+		return nil, err
+	}
+
+	return artifactBytes, nil
+}
+
+func (p Proxy) createOCIManifestReferrer(annotations map[string]string, subject ociimagespec.Descriptor, layerDesc ociimagespec.Descriptor, configDesc ociimagespec.Descriptor) ([]byte, error) {
+
+	artifact := ociimagespec.Manifest{
+		Config: ociimagespec.Descriptor{
+			MediaType: checkHealthMediaType,
+			Digest:    configDesc.Digest,
+			Size:      configDesc.Size,
+		},
+		Layers: []ociimagespec.Descriptor{
+			{
+				MediaType: layerDesc.MediaType,
+				Digest:    layerDesc.Digest,
+				Size:      layerDesc.Size,
+			},
+		},
+		// ArtifactType: checkHealthArtifactType,
+		Subject: &ociimagespec.Descriptor{
+			MediaType: subject.MediaType,
+			Digest:    subject.Digest,
+			Size:      subject.Size,
+		},
+		MediaType:   ociimagespec.MediaTypeImageManifest,
+		Annotations: annotations,
+	}
+
+	artifactBytes, err := json.Marshal(artifact)
+	if err != nil {
+		return nil, err
+	}
+
+	return artifactBytes, nil
+}
+
+func (p Proxy) createORASArtifactReferrer(annotations map[string]string, subject ociimagespec.Descriptor, layerDesc ociimagespec.Descriptor) ([]byte, error) {
+
+	artifact := orasartifact.Manifest{
+		Blobs: []orasartifact.Descriptor{
+			{
+				MediaType: layerDesc.MediaType,
+				Digest:    layerDesc.Digest,
+				Size:      layerDesc.Size,
+			},
+		},
+		ArtifactType: checkHealthArtifactType,
+		Subject: orasartifact.Descriptor{
+			MediaType: subject.MediaType,
+			Digest:    subject.Digest,
+			Size:      subject.Size,
+		},
+		MediaType: "application/vnd.cncf.oras.artifact.manifest.v1+json",
+	}
+
+	artifactBytes, err := json.Marshal(artifact)
+	if err != nil {
+		return nil, err
+	}
+
+	return artifactBytes, nil
 }
 
 func (p Proxy) createOCIImage(repo, tag string) (digest.Digest, string, string, string, []byte, error) {
@@ -404,11 +495,11 @@ func (p Proxy) createOCIImage(repo, tag string) (digest.Digest, string, string, 
 }
 
 // verifyReferrers verifies that the given subject has the expectedReferrers in the registry.
-func (p Proxy) verifyReferrers(repo string, subject ociimagespec.Descriptor, expectedReferrers []ociimagespec.Descriptor) error {
+func (p Proxy) verifyReferrers(repo string, subject ociimagespec.Descriptor, expectedReferrers []ociimagespec.Descriptor, apiVersion string) error {
 	p.Logger.Info().Msg(fmt.Sprintf("discover referrers for %v@%v", repo, subject.Digest))
 
 	// Discover all referrers
-	discoveredReferrers, err := p.getReferrers(repo, subject.Digest)
+	discoveredReferrers, err := p.getReferrers(repo, subject.Digest, apiVersion)
 	if err != nil {
 		return err
 	}
@@ -547,8 +638,13 @@ func (p Proxy) pushOCIImage(repo, tag string) (ociimagespec.Descriptor, error) {
 
 // getReferrers discovers referrers of the given subject using the referrers API.
 // See: https://gist.github.com/aviral26/ca4b0c1989fd978e74be75cbf3f3ea92
-func (p Proxy) getReferrers(repo string, subject digest.Digest) ([]orasartifact.Descriptor, error) {
-	referrersUrl := p.url(p.LoginServer, fmt.Sprintf(routeReferrers, repo, string(subject)))
+func (p Proxy) getReferrers(repo string, subject digest.Digest, apiVersion string) ([]orasartifact.Descriptor, error) {
+	// OCI referrers
+
+	referrersUrl := p.url(p.LoginServer, fmt.Sprintf(ocirouteReferrers, repo, string(subject)))
+	if apiVersion == OrasReferrers {
+		referrersUrl = p.url(p.LoginServer, fmt.Sprintf(orasrouteReferrers, repo, string(subject)))
+	}
 
 	var (
 		referrers []orasartifact.Descriptor
@@ -569,12 +665,6 @@ func (p Proxy) getReferrers(repo string, subject digest.Digest) ([]orasartifact.
 		if err != nil {
 			return nil, err
 		}
-
-		// var resp referrersResponse
-		// err = json.Unmarshal(tripInfo.Body, &resp)
-		// if err != nil {
-		// 	return nil, err
-		// }
 
 		p.Logger.Info().Msg(fmt.Sprintf("%s\n", tripInfo.Body))
 
