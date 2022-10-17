@@ -34,7 +34,8 @@ const (
 	routeManifest = "/v2/%s/manifests/%s" // add repo name and digest/tag
 
 	// Referrer routes
-	routeReferrers = "/oras/artifacts/v1/%s/manifests/%s/referrers" // add repo name and digest
+	// routeReferrers = "/oras/artifacts/v1/%s/manifests/%s/referrers" // add repo name and digest
+	routeReferrers = "/v2/%s/referrers/%s" // add repo name and digest
 )
 
 // Constants for generated data.
@@ -569,13 +570,15 @@ func (p Proxy) getReferrers(repo string, subject digest.Digest) ([]orasartifact.
 			return nil, err
 		}
 
-		var resp referrersResponse
-		err = json.Unmarshal(tripInfo.Body, &resp)
-		if err != nil {
-			return nil, err
-		}
+		// var resp referrersResponse
+		// err = json.Unmarshal(tripInfo.Body, &resp)
+		// if err != nil {
+		// 	return nil, err
+		// }
 
-		referrers = append(referrers, resp.Referrers...)
+		p.Logger.Info().Msg(fmt.Sprintf("%s\n", tripInfo.Body))
+
+		// referrers = append(referrers, resp.Referrers...)
 
 		if tripInfo.HeaderLink == "" {
 			break
