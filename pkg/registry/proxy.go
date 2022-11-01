@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -414,6 +415,8 @@ func (p Proxy) createOCIManifestReferrer(annotations map[string]string, subject 
 		Annotations: annotations,
 	}
 
+	artifact.SchemaVersion = 2
+
 	artifactBytes, err := json.Marshal(artifact)
 	if err != nil {
 		return nil, err
@@ -665,8 +668,8 @@ func (p Proxy) getReferrers(repo string, subject digest.Digest, apiVersion strin
 		if err != nil {
 			return nil, err
 		}
-
-		p.Logger.Info().Msg(fmt.Sprintf("%s\n", tripInfo.Body))
+		prettyJson, _ := PrettyString(fmt.Sprintf("%s\n", tripInfo.Body))
+		p.Logger.Info().Msg(prettyJson)
 
 		// referrers = append(referrers, resp.Referrers...)
 
@@ -866,4 +869,12 @@ func (p Proxy) roundTrip(regReq registryRequest, expected int, at authType) (tri
 	}
 
 	return result, nil
+}
+
+func PrettyString(str string) (string, error) {
+	var prettyJSON bytes.Buffer
+	if err := json.Indent(&prettyJSON, []byte(str), "", "    "); err != nil {
+		return "", err
+	}
+	return prettyJSON.String(), nil
 }

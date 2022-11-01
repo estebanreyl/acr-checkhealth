@@ -41,9 +41,10 @@ func runCheckReferrers(ctx *cli.Context) (err error) {
 	if err != nil {
 		return err
 	}
+	fmt.Print("\n----------------------------------------------TEST START-----------------------------------------------\n")
 
 	for _, version := range []string{OrasReferrers, OciManifestReferrers, OciReferrers} {
-		fmt.Printf("------------------------%s-------------------------\n", version)
+		fmt.Printf("\n------------------------%s-------------------------\n", version)
 		fmt.Print("----ORDERED----\n")
 
 		err = proxy.CheckReferrers(ctx.Int(referrersCountStr), version)
@@ -51,7 +52,7 @@ func runCheckReferrers(ctx *cli.Context) (err error) {
 			fmt.Print(err)
 		}
 
-		fmt.Print("----OUT OF ORDER----\n")
+		fmt.Print("\n----OUT OF ORDER----\n")
 		err = proxy.CheckReferrersOutOfOrder(ctx.Int(referrersCountStr), version)
 		if err != nil {
 			fmt.Print(err)
